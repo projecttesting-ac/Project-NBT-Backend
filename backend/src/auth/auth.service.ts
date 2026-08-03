@@ -4,6 +4,7 @@ import {
   Injectable,
   UnauthorizedException,
 } from '@nestjs/common';
+
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { ResetPasswordDto } from './dto/reset-password.dto';
@@ -14,13 +15,21 @@ import { ForgotPasswordDto } from './dto/forgot-password.dto';
 import { supabase } from '../config/supabase';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { randomUUID } from 'crypto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { LogoutDto } from './dto/logout.dto';
 @Injectable()
 export class AuthService {
   constructor(private readonly jwtService: JwtService) {}
 
   private generateOtp(): string {
-    return Math.floor(1000 + Math.random() * 9000).toString();
+  if (process.env.USE_STATIC_OTP === 'true') {
+    return process.env.STATIC_OTP || '1111';
   }
+
+  return Math.floor(
+    1000 + Math.random() * 9000,
+  ).toString();
+}
 
   private async saveOtp(
     mobileNumber: string,
@@ -48,13 +57,54 @@ export class AuthService {
     }
   }
 
-  private createToken(user: any): string {
-    return this.jwtService.sign({
+  private createAccessToken(user: any): string {
+  return this.jwtService.sign(
+    {
       id: user.id,
       mobileNumber: user.mobile_number,
-    });
-  }
+    },
+    {
+      expiresIn: '15m',
+    },
+  );
+}
 
+private createRefreshToken(user: any): string {
+  return this.jwtService.sign(
+    {
+      id: user.id,
+    },
+    {
+      expiresIn: '30d',
+    },
+  );
+}
+private async saveRefreshToken(
+  userId: string,
+  refreshToken: string,
+): Promise<void> {
+  // Delete previous refresh token
+  await supabase
+    .from('refresh_tokens')
+    .delete()
+    .eq('user_id', userId);
+
+  const expiresAt = new Date(
+    Date.now() + 30 * 24 * 60 * 60 * 1000,
+  ).toISOString();
+
+  const { error } = await supabase
+    .from('refresh_tokens')
+    .insert({
+      user_id: userId,
+      token: refreshToken,
+      expires_at: expiresAt,
+    });
+
+  if (error) {
+    throw new BadRequestException(error.message);
+  }
+}
   private sanitizeUser(user: any) {
     const { password_hash, ...safeUser } = user;
     return safeUser;
@@ -161,15 +211,19 @@ export class AuthService {
       throw new UnauthorizedException('User not found.');
     }
 
-    const accessToken = this.createToken(user);
-
+const accessToken = this.createAccessToken(user);
+const refreshToken = this.createRefreshToken(user);
+await this.saveRefreshToken(
+  user.id,
+  refreshToken,
+);
     return {
-      success: true,
-      message: 'Mobile number verified successfully.',
-      accessToken,
-      isProfileCompleted: user.is_profile_completed,
-      user: this.sanitizeUser(user),
-    };
+  success: true,
+  message: 'Registration completed successfully.',
+  accessToken,
+  refreshToken,
+  isProfileCompleted: user.is_profile_completed,
+};
   }
 
   async login(loginDto: LoginDto) {
@@ -252,17 +306,20 @@ export class AuthService {
       throw new UnauthorizedException('User not found.');
     }
 
-    const accessToken = this.createToken(user);
-
+const accessToken = this.createAccessToken(user);
+const refreshToken = this.createRefreshToken(user);
+await this.saveRefreshToken(
+  user.id,
+  refreshToken,
+);
     return {
-      success: true,
-      message: 'Login successful.',
-      accessToken,
-      isProfileCompleted: user.is_profile_completed,
-      user: this.sanitizeUser(user),
-    };
-  }
-
+  success: true,
+  message: 'Login successful.',
+  accessToken,
+  refreshToken,
+  isProfileCompleted: user.is_profile_completed,
+};
+    }
   async resendOtp(mobileNumber: string) {
     const { data: user, error } = await supabase
       .from('users')
@@ -473,6 +530,67 @@ async changePassword(
   return {
     success: true,
     message: 'Password changed successfully.',
+  };
+}
+async refreshToken(dto: RefreshTokenDto) {
+  const { refreshToken } = dto;
+
+  const { data: tokenData, error } = await supabase
+    .from('refresh_tokens')
+    .select('*')
+    .eq('token', refreshToken)
+    .maybeSingle();
+
+  if (error || !tokenData) {
+    throw new UnauthorizedException(
+      'Invalid refresh token.',
+    );
+  }
+
+  if (
+    new Date(tokenData.expires_at) < new Date()
+  ) {
+    throw new UnauthorizedException(
+      'Refresh token has expired.',
+    );
+  }
+
+  const { data: user, error: userError } =
+    await supabase
+      .from('users')
+      .select('*')
+      .eq('id', tokenData.user_id)
+      .maybeSingle();
+
+  if (userError || !user) {
+    throw new UnauthorizedException(
+      'User not found.',
+    );
+  }
+
+  const accessToken =
+    this.createAccessToken(user);
+
+  return {
+    success: true,
+    accessToken,
+  };
+}
+async logout(dto: LogoutDto) {
+  const { refreshToken } = dto;
+
+  const { error } = await supabase
+    .from('refresh_tokens')
+    .delete()
+    .eq('token', refreshToken);
+
+  if (error) {
+    throw new BadRequestException(error.message);
+  }
+
+  return {
+    success: true,
+    message: 'Logged out successfully.',
   };
 }
 }
