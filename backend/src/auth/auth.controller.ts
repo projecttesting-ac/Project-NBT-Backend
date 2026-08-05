@@ -18,8 +18,20 @@ export class AuthController {
 
   @Post('register')
   register(@Body() dto: RegisterDto) {
+    console.log("Register Called");
+    console.log(dto);
     return this.authService.register(dto);
   }
+
+  // @Post('register')
+  // register(@Body() dto: RegisterDto) {
+  // console.log("REGISTER CALLED");
+
+  // return {
+  //   success: true,
+  //   message: "Service reached",
+  //  };
+  // }
 
   @Post('verify-register-otp')
   verifyRegisterOtp(@Body() dto: VerifyOtpDto) {
