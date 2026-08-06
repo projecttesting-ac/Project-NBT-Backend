@@ -312,12 +312,14 @@ await this.saveRefreshToken(
   user.id,
   refreshToken,
 );
-    return {
+const { password_hash, refresh_token, ...safeUser } = user;
+  return {
   success: true,
   message: 'Login successful.',
   accessToken,
   refreshToken,
   isProfileCompleted: user.is_profile_completed,
+  user: safeUser,
 };
     }
   async resendOtp(mobileNumber: string) {
