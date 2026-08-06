@@ -80,12 +80,37 @@ export class ConversationsService {
           user = otherUser;
         }
       }
+// Get unread message count
+const {
+  count: unreadCount,
+} = await supabase
+  .from('messages')
+  .select('*', {
+    count: 'exact',
+    head: true,
+  })
+  .eq('conversation_id', membership.conversation_id)
+  .eq('is_read', false)
+  .neq('sender_id', userId);
+      // Get last message
+      const {
+  data: lastMessage,
+} = await supabase
+  .from('messages')
+  .select('content, created_at')
+  .eq('conversation_id', membership.conversation_id)
+  .order('created_at', { ascending: false })
+  .limit(1)
+  .maybeSingle();
 
       conversations.push({
-        id: conversation.id,
-        type: conversation.type,
-        user,
-      });
+  id: conversation.id,
+  type: conversation.type,
+  user,
+  lastMessage: lastMessage?.content ?? null,
+  lastMessageTime: lastMessage?.created_at ?? null,
+  unreadCount: unreadCount ?? 0,
+});
     }
 
     return {
