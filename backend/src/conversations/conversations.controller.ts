@@ -1,8 +1,16 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
 import { ConversationsService } from './conversations.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
-
+import { SendMessageDto } from './dto/send-message.dto';
 @Controller('conversations')
 export class ConversationsController {
   constructor(
@@ -17,5 +25,41 @@ export class ConversationsController {
   console.log('Logged in user:', user);
 
   return this.conversationsService.getConversations(user.id);
+}
+@UseGuards(JwtAuthGuard)
+@Get(':conversationId/messages')
+getMessages(
+  @CurrentUser() user: any,
+  @Param('conversationId') conversationId: string,
+) {
+  return this.conversationsService.getMessages(
+    user.id,
+    conversationId,
+  );
+
+}
+@UseGuards(JwtAuthGuard)
+@Post(':conversationId/messages')
+sendMessage(
+  @CurrentUser() user: any,
+  @Param('conversationId') conversationId: string,
+  @Body() dto: SendMessageDto,
+) {
+  return this.conversationsService.sendMessage(
+    user.id,
+    conversationId,
+    dto,
+  );
+}
+@UseGuards(JwtAuthGuard)
+@Patch(':conversationId/read')
+markMessagesAsRead(
+  @CurrentUser() user: any,
+  @Param('conversationId') conversationId: string,
+) {
+  return this.conversationsService.markMessagesAsRead(
+    user.id,
+    conversationId,
+  );
 }
 }

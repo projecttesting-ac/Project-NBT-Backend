@@ -2,13 +2,12 @@ import {
   BadRequestException,
   Injectable,
 } from '@nestjs/common';
-
+import { SendMessageDto } from './dto/send-message.dto';
 import { supabase } from '../config/supabase';
 
 @Injectable()
 export class ConversationsService {
   async getConversations(userId: string) {
-    // Get all conversations of the logged-in user
     const {
       data: memberships,
       error: membershipError,
@@ -33,7 +32,7 @@ export class ConversationsService {
     const conversations: any[] = [];
 
     for (const membership of memberships) {
-      // Get conversation details
+      // Conversation details
       const {
         data: conversation,
         error: conversationError,
@@ -47,14 +46,17 @@ export class ConversationsService {
         continue;
       }
 
-      // Find the other participant
+      // Other participant
       const {
         data: otherMember,
         error: memberError,
       } = await supabase
         .from('conversation_members')
         .select('user_id')
-        .eq('conversation_id', membership.conversation_id)
+        .eq(
+          'conversation_id',
+          membership.conversation_id,
+        )
         .neq('user_id', userId)
         .maybeSingle();
 
@@ -70,9 +72,14 @@ export class ConversationsService {
           error: userError,
         } = await supabase
           .from('users')
-          .select(
-            'id, display_name, username, avatar_url',
-          )
+          .select(`
+            id,
+            display_name,
+            username,
+            avatar_url,
+            is_online,
+            last_seen
+          `)
           .eq('id', otherMember.user_id)
           .single();
 
@@ -80,42 +87,201 @@ export class ConversationsService {
           user = otherUser;
         }
       }
-// Get unread message count
-const {
-  count: unreadCount,
-} = await supabase
-  .from('messages')
-  .select('*', {
-    count: 'exact',
-    head: true,
-  })
-  .eq('conversation_id', membership.conversation_id)
-  .eq('is_read', false)
-  .neq('sender_id', userId);
-      // Get last message
+
+      // Last message
       const {
-  data: lastMessage,
-} = await supabase
-  .from('messages')
-  .select('content, created_at')
-  .eq('conversation_id', membership.conversation_id)
-  .order('created_at', { ascending: false })
-  .limit(1)
-  .maybeSingle();
+        data: lastMessage,
+      } = await supabase
+        .from('messages')
+        .select(
+          'content, created_at',
+        )
+        .eq(
+          'conversation_id',
+          membership.conversation_id,
+        )
+        .order('created_at', {
+          ascending: false,
+        })
+        .limit(1)
+        .maybeSingle();
+
+      // Unread count
+      const {
+        count: unreadCount,
+      } = await supabase
+        .from('messages')
+        .select('*', {
+          count: 'exact',
+          head: true,
+        })
+        .eq(
+          'conversation_id',
+          membership.conversation_id,
+        )
+        .eq('is_read', false)
+        .neq('sender_id', userId);
 
       conversations.push({
-  id: conversation.id,
-  type: conversation.type,
-  user,
-  lastMessage: lastMessage?.content ?? null,
-  lastMessageTime: lastMessage?.created_at ?? null,
-  unreadCount: unreadCount ?? 0,
-});
+        id: conversation.id,
+        type: conversation.type,
+        user,
+        lastMessage:
+          lastMessage?.content ?? null,
+        lastMessageTime:
+          lastMessage?.created_at ?? null,
+        unreadCount:
+          unreadCount ?? 0,
+      });
     }
 
     return {
       success: true,
       conversations,
+    };
+  }
+    async getMessages(
+    userId: string,
+    conversationId: string,
+  ) {
+    // Get all messages
+    const {
+      data: messages,
+      error,
+    } = await supabase
+      .from('messages')
+      .select(`
+        id,
+        sender_id,
+        content,
+        created_at,
+        is_read
+      `)
+      .eq('conversation_id', conversationId)
+      .order('created_at', {
+        ascending: true,
+      });
+
+    if (error) {
+      throw new BadRequestException(
+        error.message,
+      );
+    }
+
+    // Find the other participant
+    const {
+      data: otherMember,
+      error: memberError,
+    } = await supabase
+      .from('conversation_members')
+      .select('user_id')
+      .eq('conversation_id', conversationId)
+      .neq('user_id', userId)
+      .maybeSingle();
+
+    if (memberError) {
+      throw new BadRequestException(
+        memberError.message,
+      );
+    }
+
+    let user: any = null;
+
+    if (otherMember) {
+      const {
+        data: otherUser,
+        error: userError,
+      } = await supabase
+        .from('users')
+        .select(`
+          id,
+          display_name,
+          username,
+          avatar_url,
+          is_online,
+          last_seen
+        `)
+        .eq('id', otherMember.user_id)
+        .single();
+
+      if (userError) {
+        throw new BadRequestException(
+          userError.message,
+        );
+      }
+
+      user = otherUser;
+    }
+
+    return {
+      success: true,
+      user,
+      messages: messages.map(
+        (message) => ({
+          id: message.id,
+          senderId: message.sender_id,
+          content: message.content,
+          createdAt:
+            message.created_at,
+          isRead: message.is_read,
+        }),
+      ),
+    };
+  }
+  async sendMessage(
+    userId: string,
+    conversationId: string,
+    dto: SendMessageDto,
+  ) {
+    const { data, error } = await supabase
+      .from('messages')
+      .insert({
+        conversation_id: conversationId,
+        sender_id: userId,
+        content: dto.content,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(
+        error.message,
+      );
+    }
+
+    return {
+      success: true,
+      message: 'Message sent successfully.',
+      data,
+    };
+  }
+
+  async markMessagesAsRead(
+    userId: string,
+    conversationId: string,
+  ) {
+    const { error } = await supabase
+      .from('messages')
+      .update({
+        is_read: true,
+      })
+      .eq(
+        'conversation_id',
+        conversationId,
+      )
+      .neq('sender_id', userId)
+      .eq('is_read', false);
+
+    if (error) {
+      throw new BadRequestException(
+        error.message,
+      );
+    }
+
+    return {
+      success: true,
+      message:
+        'Messages marked as read.',
     };
   }
 }

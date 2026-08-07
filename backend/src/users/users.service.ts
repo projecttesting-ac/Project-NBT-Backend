@@ -86,6 +86,44 @@ export class UsersService {
     user: safeUser,
   };
 }
+async setOnline(userId: string) {
+  const { error } = await supabase
+    .from('users')
+    .update({
+      is_online: true,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', userId);
+
+  if (error) {
+    throw new BadRequestException(error.message);
+  }
+
+  return {
+    success: true,
+    message: 'User is online.',
+  };
+}
+
+async setOffline(userId: string) {
+  const { error } = await supabase
+    .from('users')
+    .update({
+      is_online: false,
+      last_seen: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', userId);
+
+  if (error) {
+    throw new BadRequestException(error.message);
+  }
+
+  return {
+    success: true,
+    message: 'User is offline.',
+  };
+}
 async updateProfile(
   userId: string,
   dto: UpdateProfileDto,

@@ -35,10 +35,7 @@ export class AuthService {
     mobileNumber: string,
     otp: string,
   ): Promise<void> {
-    await supabase
-      .from('otp_codes')
-      .delete()
-      .eq('mobile_number', mobileNumber);
+    
 
     const expiresAt = new Date(
       Date.now() + 5 * 60 * 1000,
@@ -305,7 +302,14 @@ await this.saveRefreshToken(
     if (userError || !user) {
       throw new UnauthorizedException('User not found.');
     }
-
+await supabase
+  .from('users')
+  .update({
+    is_online: true,
+    last_seen: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  })
+  .eq('id', user.id);
 const accessToken = this.createAccessToken(user);
 const refreshToken = this.createRefreshToken(user);
 await this.saveRefreshToken(
@@ -581,6 +585,31 @@ async refreshToken(dto: RefreshTokenDto) {
 async logout(dto: LogoutDto) {
   const { refreshToken } = dto;
 
+  // Find the refresh token
+  const { data: tokenData, error: tokenError } =
+    await supabase
+      .from('refresh_tokens')
+      .select('user_id')
+      .eq('token', refreshToken)
+      .maybeSingle();
+
+  if (tokenError || !tokenData) {
+    throw new UnauthorizedException(
+      'Invalid refresh token.',
+    );
+  }
+
+  // Mark user offline
+  await supabase
+  .from('users')
+  .update({
+    is_online: false,
+    last_seen: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  })
+  .eq('id', tokenData.user_id);
+
+  // Delete refresh token
   const { error } = await supabase
     .from('refresh_tokens')
     .delete()
