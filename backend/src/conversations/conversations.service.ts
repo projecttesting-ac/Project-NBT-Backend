@@ -152,12 +152,13 @@ export class ConversationsService {
     } = await supabase
       .from('messages')
       .select(`
-        id,
-        sender_id,
-        content,
-        created_at,
-        is_read
-      `)
+  id,
+  sender_id,
+  content,
+  created_at,
+  is_read,
+  reply_to_message_id
+`)
       .eq('conversation_id', conversationId)
       .order('created_at', {
         ascending: true,
@@ -225,6 +226,7 @@ export class ConversationsService {
           createdAt:
             message.created_at,
           isRead: message.is_read,
+          replyToMessageId: message.reply_to_message_id,
         }),
       ),
     };
@@ -237,10 +239,11 @@ export class ConversationsService {
     const { data, error } = await supabase
       .from('messages')
       .insert({
-        conversation_id: conversationId,
-        sender_id: userId,
-        content: dto.content,
-      })
+  conversation_id: conversationId,
+  sender_id: userId,
+  content: dto.content,
+  reply_to_message_id: dto.replyToMessageId ?? null,
+})
       .select()
       .single();
 
@@ -436,6 +439,54 @@ async updateMessage(
   return {
     success: true,
     message: 'Message updated successfully.',
+    data,
+  };
+}
+async deleteMessage(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+) {
+  // Make sure the user belongs to this conversation
+  const { data: membership, error: membershipError } =
+    await supabase
+      .from('conversation_members')
+      .select('conversation_id')
+      .eq('conversation_id', conversationId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+  if (membershipError) {
+    throw new BadRequestException(
+      membershipError.message,
+    );
+  }
+
+  if (!membership) {
+    throw new BadRequestException(
+      'You are not a member of this conversation.',
+    );
+  }
+
+  // Delete only the user's own message
+  const { data, error } = await supabase
+    .from('messages')
+    .delete()
+    .eq('id', messageId)
+    .eq('conversation_id', conversationId)
+    .eq('sender_id', userId)
+    .select()
+    .single();
+
+  if (error) {
+    throw new BadRequestException(
+      error.message,
+    );
+  }
+
+  return {
+    success: true,
+    message: 'Message deleted successfully.',
     data,
   };
 }

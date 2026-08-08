@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -103,6 +104,19 @@ updateMessage(
     conversationId,
     messageId,
     dto,
+  );
+}
+@UseGuards(JwtAuthGuard)
+@Delete(':conversationId/messages/:messageId')
+deleteMessage(
+  @CurrentUser() user: any,
+  @Param('conversationId') conversationId: string,
+  @Param('messageId') messageId: string,
+) {
+  return this.conversationsService.deleteMessage(
+    user.id,
+    conversationId,
+    messageId,
   );
 }
 }
