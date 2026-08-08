@@ -284,4 +284,107 @@ export class ConversationsService {
         'Messages marked as read.',
     };
   }
+  async markMessageAsDelivered(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+) {
+  // Make sure the user belongs to this conversation
+  const { data: membership, error: membershipError } =
+    await supabase
+      .from('conversation_members')
+      .select('conversation_id')
+      .eq('conversation_id', conversationId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+  if (membershipError) {
+    throw new BadRequestException(
+      membershipError.message,
+    );
+  }
+
+  if (!membership) {
+    throw new BadRequestException(
+      'You are not a member of this conversation.',
+    );
+  }
+
+  // Mark the message as delivered
+  const { data, error } = await supabase
+    .from('messages')
+    .update({
+      delivered_at: new Date().toISOString(),
+    })
+    .eq('id', messageId)
+    .eq('conversation_id', conversationId)
+    .neq('sender_id', userId)
+    .select()
+    .single();
+
+  if (error) {
+    throw new BadRequestException(
+      error.message,
+    );
+  }
+
+  return {
+    success: true,
+    message: 'Message marked as delivered.',
+    data,
+  };
+}
+
+async markMessageAsSeen(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+) {
+  // Make sure the user belongs to this conversation
+  const { data: membership, error: membershipError } =
+    await supabase
+      .from('conversation_members')
+      .select('conversation_id')
+      .eq('conversation_id', conversationId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+  if (membershipError) {
+    throw new BadRequestException(
+      membershipError.message,
+    );
+  }
+
+  if (!membership) {
+    throw new BadRequestException(
+      'You are not a member of this conversation.',
+    );
+  }
+
+  // Mark the message as seen
+  const { data, error } = await supabase
+    .from('messages')
+    .update({
+      delivered_at: new Date().toISOString(),
+      seen_at: new Date().toISOString(),
+      is_read: true,
+    })
+    .eq('id', messageId)
+    .eq('conversation_id', conversationId)
+    .neq('sender_id', userId)
+    .select()
+    .single();
+
+  if (error) {
+    throw new BadRequestException(
+      error.message,
+    );
+  }
+
+  return {
+    success: true,
+    message: 'Message marked as seen.',
+    data,
+  };
+}
 }

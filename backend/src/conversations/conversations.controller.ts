@@ -62,4 +62,31 @@ markMessagesAsRead(
     conversationId,
   );
 }
+@UseGuards(JwtAuthGuard)
+@Patch(':conversationId/messages/:messageId/delivered')
+markMessageAsDelivered(
+  @CurrentUser() user: any,
+  @Param('conversationId') conversationId: string,
+  @Param('messageId') messageId: string,
+) {
+  return this.conversationsService.markMessageAsDelivered(
+    user.id,
+    conversationId,
+    messageId,
+  );
+}
+
+@UseGuards(JwtAuthGuard)
+@Patch(':conversationId/messages/:messageId/seen')
+markMessageAsSeen(
+  @CurrentUser() user: any,
+  @Param('conversationId') conversationId: string,
+  @Param('messageId') messageId: string,
+) {
+  return this.conversationsService.markMessageAsSeen(
+    user.id,
+    conversationId,
+    messageId,
+  );
+}
 }
