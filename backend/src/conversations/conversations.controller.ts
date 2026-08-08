@@ -11,6 +11,7 @@ import { ConversationsService } from './conversations.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { SendMessageDto } from './dto/send-message.dto';
+import { UpdateMessageDto } from './dto/update-message.dto';
 @Controller('conversations')
 export class ConversationsController {
   constructor(
@@ -87,6 +88,21 @@ markMessageAsSeen(
     user.id,
     conversationId,
     messageId,
+  );
+}
+@UseGuards(JwtAuthGuard)
+@Patch(':conversationId/messages/:messageId')
+updateMessage(
+  @CurrentUser() user: any,
+  @Param('conversationId') conversationId: string,
+  @Param('messageId') messageId: string,
+  @Body() dto: UpdateMessageDto,
+) {
+  return this.conversationsService.updateMessage(
+    user.id,
+    conversationId,
+    messageId,
+    dto,
   );
 }
 }

@@ -4,6 +4,7 @@ import {
 } from '@nestjs/common';
 import { SendMessageDto } from './dto/send-message.dto';
 import { supabase } from '../config/supabase';
+import { UpdateMessageDto } from './dto/update-message.dto';
 
 @Injectable()
 export class ConversationsService {
@@ -384,6 +385,57 @@ async markMessageAsSeen(
   return {
     success: true,
     message: 'Message marked as seen.',
+    data,
+  };
+}
+async updateMessage(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+  dto: UpdateMessageDto,
+) {
+  // Verify that the user belongs to the conversation
+  const { data: membership, error: membershipError } =
+    await supabase
+      .from('conversation_members')
+      .select('conversation_id')
+      .eq('conversation_id', conversationId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+  if (membershipError) {
+    throw new BadRequestException(
+      membershipError.message,
+    );
+  }
+
+  if (!membership) {
+    throw new BadRequestException(
+      'You are not a member of this conversation.',
+    );
+  }
+
+  // Update only the user's own message
+  const { data, error } = await supabase
+    .from('messages')
+    .update({
+      content: dto.content,
+    })
+    .eq('id', messageId)
+    .eq('conversation_id', conversationId)
+    .eq('sender_id', userId)
+    .select()
+    .single();
+
+  if (error) {
+    throw new BadRequestException(
+      error.message,
+    );
+  }
+
+  return {
+    success: true,
+    message: 'Message updated successfully.',
     data,
   };
 }
