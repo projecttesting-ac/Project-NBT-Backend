@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsNotEmpty,
   IsOptional,
   IsString,
@@ -6,11 +7,16 @@ import {
 } from 'class-validator';
 
 export class SendMessageDto {
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  content!: string;
+  content?: string;
 
   @IsOptional()
   @IsUUID()
   replyToMessageId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  mediaIds?: string[];
 }

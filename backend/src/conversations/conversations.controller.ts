@@ -13,6 +13,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { SendMessageDto } from './dto/send-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
+import { ForwardMessageDto } from './dto/forward-message.dto';
 @Controller('conversations')
 export class ConversationsController {
   constructor(
@@ -117,6 +118,21 @@ deleteMessage(
     user.id,
     conversationId,
     messageId,
+  );
+}
+@UseGuards(JwtAuthGuard)
+@Post(':conversationId/messages/:messageId/forward')
+forwardMessage(
+  @CurrentUser() user: any,
+  @Param('conversationId') conversationId: string,
+  @Param('messageId') messageId: string,
+  @Body() dto: ForwardMessageDto,
+) {
+  return this.conversationsService.forwardMessage(
+    user.id,
+    conversationId,
+    messageId,
+    dto,
   );
 }
 }
