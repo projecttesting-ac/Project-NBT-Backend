@@ -11,7 +11,6 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 export class UsersService {
   async createProfile(userId: string, dto: CreateProfileDto) {
     const {
-      fullName,
       username,
       displayName,
       bio,
@@ -41,7 +40,6 @@ export class UsersService {
     const { data, error } = await supabase
       .from('users')
       .update({
-        full_name: fullName,
         username,
         display_name: displayName,
         bio,

@@ -4,6 +4,8 @@ import {
   IsDateString,
   MaxLength,
   IsUrl,
+  IsArray,
+  ArrayMaxSize,
 } from 'class-validator';
 
 export class UpdateProfileDto {
@@ -28,9 +30,10 @@ export class UpdateProfileDto {
   city!: string;
 
   @IsOptional()
-  @IsString()
-  @MaxLength(50)
-  interest!: string;
+  @IsArray()
+  @IsString({ each: true })
+  @ArrayMaxSize(20)
+  interest!: string[];
 
   @IsOptional()
   @IsString()
