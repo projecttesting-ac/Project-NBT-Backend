@@ -9,6 +9,47 @@ import { supabase } from '../config/supabase';
 
 @Injectable()
 export class EventsService {
+  private convertEventDate(eventDate?: string): string | undefined {
+  if (!eventDate) {
+    return undefined;
+  }
+
+  const parts = eventDate.split('/');
+
+  if (parts.length !== 3) {
+    throw new BadRequestException(
+      'Event date must be in DD/MM/YYYY format.',
+    );
+  }
+
+  const [day, month, year] = parts;
+
+  if (
+    !/^\d{2}$/.test(day) ||
+    !/^\d{2}$/.test(month) ||
+    !/^\d{4}$/.test(year)
+  ) {
+    throw new BadRequestException(
+      'Event date must be in DD/MM/YYYY format.',
+    );
+  }
+
+  const dayNumber = Number(day);
+  const monthNumber = Number(month);
+  const yearNumber = Number(year);
+
+  const date = new Date(yearNumber, monthNumber - 1, dayNumber);
+
+  if (
+    date.getFullYear() !== yearNumber ||
+    date.getMonth() !== monthNumber - 1 ||
+    date.getDate() !== dayNumber
+  ) {
+    throw new BadRequestException('Invalid event date.');
+  }
+
+  return `${year}-${month}-${day}`;
+}
   async uploadPoster(
     userId: string,
     file: any,
@@ -63,7 +104,7 @@ organizer_id: userId,
       description: dto.description,
       what_to_expect: dto.whatToExpect,
       organizer_note: dto.organizerNote,
-      event_date: dto.eventDate,
+event_date: this.convertEventDate(dto.eventDate),
       venue_name: dto.venueName,
       venue_address: dto.venueAddress,
       poster_url: dto.posterUrl,
@@ -151,7 +192,8 @@ async update(
     updates.organizer_note = dto.organizerNote;
 
   if (dto.eventDate !== undefined)
-    updates.event_date = dto.eventDate;
+  updates.event_date =
+    this.convertEventDate(dto.eventDate);
 
   if (dto.venueName !== undefined)
     updates.venue_name = dto.venueName;

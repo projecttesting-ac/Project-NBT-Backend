@@ -1,5 +1,4 @@
 import {
-  IsDateString,
   IsNotEmpty,
   IsNumber,
   IsOptional,
@@ -23,8 +22,8 @@ export class CreateEventDto {
   @IsString()
   organizerNote?: string;
 
-  @IsDateString()
-  eventDate!: string;
+  @IsString()
+eventDate!: string;
 
   @IsString()
   @IsNotEmpty()
