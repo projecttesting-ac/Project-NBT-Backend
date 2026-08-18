@@ -9,6 +9,47 @@ import { supabase } from '../config/supabase';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 @Injectable()
 export class UsersService {
+  private convertDateOfBirth(dateOfBirth?: string): string | undefined {
+  if (!dateOfBirth) {
+    return undefined;
+  }
+
+  const parts = dateOfBirth.split('/');
+
+  if (parts.length !== 3) {
+    throw new BadRequestException(
+      'Date of birth must be in DD/MM/YYYY format.',
+    );
+  }
+
+  const [day, month, year] = parts;
+
+  if (
+    !/^\d{2}$/.test(day) ||
+    !/^\d{2}$/.test(month) ||
+    !/^\d{4}$/.test(year)
+  ) {
+    throw new BadRequestException(
+      'Date of birth must be in DD/MM/YYYY format.',
+    );
+  }
+
+  const dayNumber = Number(day);
+  const monthNumber = Number(month);
+  const yearNumber = Number(year);
+
+  const date = new Date(yearNumber, monthNumber - 1, dayNumber);
+
+  if (
+    date.getFullYear() !== yearNumber ||
+    date.getMonth() !== monthNumber - 1 ||
+    date.getDate() !== dayNumber
+  ) {
+    throw new BadRequestException('Invalid date of birth.');
+  }
+
+  return `${year}-${month}-${day}`;
+}
   async createProfile(userId: string, dto: CreateProfileDto) {
     const {
       username,
@@ -45,7 +86,7 @@ export class UsersService {
         bio,
         interest,
         pronouns,
-        date_of_birth: dateOfBirth,
+date_of_birth: this.convertDateOfBirth(dateOfBirth),
         city,
         avatar_url: avatarUrl,
         is_profile_completed: true,
@@ -166,7 +207,8 @@ if (dto.pronouns !== undefined)
   updates.pronouns = dto.pronouns;
 
 if (dto.dateOfBirth !== undefined)
-  updates.date_of_birth = dto.dateOfBirth;
+  updates.date_of_birth =
+    this.convertDateOfBirth(dto.dateOfBirth);
 
 if (dto.avatarUrl !== undefined)
   updates.avatar_url = dto.avatarUrl;
@@ -244,4 +286,5 @@ async uploadAvatar(userId: string, file: any) {
     avatarUrl: publicUrl,
   };
 }
+
 }

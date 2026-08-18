@@ -33,8 +33,8 @@ interest?: string[];
   pronouns?: string;
 
   @IsOptional()
-  @IsDateString()
-  dateOfBirth?: string;
+@IsString()
+dateOfBirth?: string;
 
   @IsOptional()
   @IsString()
