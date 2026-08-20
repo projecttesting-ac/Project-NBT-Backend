@@ -15,18 +15,18 @@ secretOrKey: process.env.JWT_SECRET || 'your-secret-key',
   }
 
   async validate(payload: any) {
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('*')
-      .eq('id', payload.id)
-      .maybeSingle();
+  const { data: user, error } = await supabase
+    .from('users')
+    .select('*')
+    .eq('id', payload.id)
+    .maybeSingle();
 
-    if (error || !user) {
-      throw new UnauthorizedException('Invalid token.');
-    }
-
-    const { password_hash, ...safeUser } = user;
-
-    return safeUser;
+  if (error || !user) {
+    throw new UnauthorizedException('Invalid token.');
   }
+
+  const { password_hash, ...safeUser } = user;
+
+  return safeUser;
+}
 }

@@ -12,6 +12,9 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { CurrentUser } from './current-user.decorator';
+  import { ResendOtpDto } from './dto/resend-otp.dto';
+  import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { LogoutDto } from './dto/logout.dto';
 @Controller('auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
@@ -48,10 +51,11 @@ export class AuthController {
     return this.authService.verifyLoginOtp(dto);
   }
 
-  @Post('resend-otp')
-  resendOtp(@Body() dto: VerifyOtpDto) {
-    return this.authService.resendOtp(dto.mobileNumber);
-  }
+
+@Post('resend-otp')
+resendOtp(@Body() dto: ResendOtpDto) {
+  return this.authService.resendOtp(dto.mobileNumber);
+}
   @Post('forgot-password')
 forgotPassword(@Body() dto: ForgotPasswordDto) {
   return this.authService.forgotPassword(dto);
@@ -73,5 +77,13 @@ changePassword(
   @Body() dto: ChangePasswordDto,
 ) {
   return this.authService.changePassword(user.id, dto);
+}
+@Post('refresh-token')
+refreshToken(@Body() dto: RefreshTokenDto) {
+  return this.authService.refreshToken(dto);
+}
+@Post('logout')
+logout(@Body() dto: LogoutDto) {
+  return this.authService.logout(dto);
 }
 }
