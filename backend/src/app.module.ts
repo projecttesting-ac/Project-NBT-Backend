@@ -8,6 +8,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { EventsModule } from './events/events.module';
 import { ConversationsModule } from './conversations/conversations.module';
+import { ClubsModule } from './clubs/clubs.module';
 
 @Module({
   imports: [
@@ -19,6 +20,7 @@ import { ConversationsModule } from './conversations/conversations.module';
     UsersModule,
     EventsModule,
     ConversationsModule,
+    ClubsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
