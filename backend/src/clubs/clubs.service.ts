@@ -1,7 +1,5 @@
-import {
-  BadRequestException,
-  Injectable,
-} from '@nestjs/common';
+import {BadRequestException, Injectable,} 
+from '@nestjs/common';
 import { supabase } from '../config/supabase';
 
 @Injectable()
@@ -25,14 +23,14 @@ export class ClubsService {
           .select('id', {
             count: 'exact',
             head: true,
-          })
+  })
           .eq('club_id', club.id);
 
       if (countError) {
         throw new BadRequestException(
           countError.message,
         );
-      }
+  }
 
       // Check whether current user joined
       const { data: membership, error: membershipError } =

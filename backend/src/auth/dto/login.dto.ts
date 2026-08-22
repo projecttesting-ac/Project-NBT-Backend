@@ -1,8 +1,12 @@
-import {
-  IsMobilePhone,
-  IsNotEmpty,
-  IsString,
-} from 'class-validator';
+import {IsMobilePhone,IsNotEmpty,IsString,} 
+from 'class-validator';
+
+
+/*class LoginDto {
+ mobileNumber: string;
+ password: string;
+ then login otp verification
+}*/
 
 export class LoginDto {
   @IsMobilePhone('en-IN')

@@ -23,7 +23,7 @@ export class ClubsController {
     return this.clubsService.findAll(user.id);
   }
 
-// 👇 ADD THIS HERE
+//  get suggested
   @UseGuards(JwtAuthGuard)
   @Get('suggested')
   getSuggested(@CurrentUser() user: any) {

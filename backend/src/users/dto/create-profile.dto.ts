@@ -1,7 +1,6 @@
 import {
   ArrayMaxSize,
   IsArray,
-  IsDateString,
   IsOptional,
   IsString,
   MaxLength,
