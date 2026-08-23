@@ -9,6 +9,128 @@ import { ForwardMessageDto } from './dto/forward-message.dto';
 
 @Injectable()
 export class ConversationsService {
+  async createConversation(
+  userId: string,
+  targetUserId: string,
+) {
+  // Cannot create a conversation with yourself
+  if (userId === targetUserId) {
+    throw new BadRequestException(
+      'You cannot create a conversation with yourself.',
+    );
+  }
+
+  // Check that target user exists
+  const { data: targetUser, error: targetUserError } =
+    await supabase
+      .from('users')
+      .select('id')
+      .eq('id', targetUserId)
+      .maybeSingle();
+
+  if (targetUserError) {
+    throw new BadRequestException(
+      targetUserError.message,
+    );
+  }
+
+  if (!targetUser) {
+    throw new BadRequestException(
+      'Target user not found.',
+    );
+  }
+
+  // Check whether a direct conversation already exists
+  const { data: myMemberships, error: myMembershipError } =
+    await supabase
+      .from('conversation_members')
+      .select('conversation_id')
+      .eq('user_id', userId);
+
+  if (myMembershipError) {
+    throw new BadRequestException(
+      myMembershipError.message,
+    );
+  }
+
+  if (myMemberships && myMemberships.length > 0) {
+    const conversationIds = myMemberships.map(
+      (item) => item.conversation_id,
+    );
+
+    const { data: existingMembership, error: existingError } =
+      await supabase
+        .from('conversation_members')
+        .select('conversation_id')
+        .in('conversation_id', conversationIds)
+        .eq('user_id', targetUserId)
+        .maybeSingle();
+
+    if (existingError) {
+      throw new BadRequestException(
+        existingError.message,
+      );
+    }
+
+    if (existingMembership) {
+      return {
+        success: true,
+        message: 'Conversation already exists.',
+        conversationId:
+          existingMembership.conversation_id,
+      };
+    }
+  }
+
+  // Create conversation
+  const { data: conversation, error: conversationError } =
+    await supabase
+      .from('conversations')
+      .insert({
+        type: 'direct',
+        created_by: userId,
+      })
+      .select()
+      .single();
+
+  if (conversationError) {
+    throw new BadRequestException(
+      conversationError.message,
+    );
+  }
+
+  // Add both users as members
+  const { error: membersError } = await supabase
+    .from('conversation_members')
+    .insert([
+      {
+        conversation_id: conversation.id,
+        user_id: userId,
+      },
+      {
+        conversation_id: conversation.id,
+        user_id: targetUserId,
+      },
+    ]);
+
+  // If adding members fails, remove conversation
+  if (membersError) {
+    await supabase
+      .from('conversations')
+      .delete()
+      .eq('id', conversation.id);
+
+    throw new BadRequestException(
+      membersError.message,
+    );
+  }
+
+  return {
+    success: true,
+    message: 'Conversation created successfully.',
+    conversation,
+  };
+}
   async getConversations(userId: string) {
     const {
       data: memberships,

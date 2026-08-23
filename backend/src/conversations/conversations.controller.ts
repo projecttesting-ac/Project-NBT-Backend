@@ -8,7 +8,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-
+import { CreateConversationDto } from './dto/create-conversation.dto';
 import { ConversationsService } from './conversations.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -23,7 +23,21 @@ export class ConversationsController {
   constructor(
     private readonly conversationsService: ConversationsService,
   ) {}
+// =========================
+// CREATE CONVERSATION
+// =========================
 
+@UseGuards(JwtAuthGuard)
+@Post()
+createConversation(
+  @CurrentUser() user: any,
+  @Body() dto: CreateConversationDto,
+) {
+  return this.conversationsService.createConversation(
+    user.id,
+    dto.targetUserId,
+  );
+}
   // =========================
   // GET CONVERSATIONS
   // =========================

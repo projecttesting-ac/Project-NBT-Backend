@@ -108,120 +108,182 @@ private async saveRefreshToken(
   }
 
   async register(registerDto: RegisterDto) {
-    const {
-      mobileNumber,
-      password,
-      confirmPassword,
-    } = registerDto;
+  const {
+    mobileNumber,
+    password,
+    confirmPassword,
+  } = registerDto;
 
-    if (password !== confirmPassword) {
-      throw new BadRequestException(
-        'Passwords do not match.',
-      );
-    }
+  if (password !== confirmPassword) {
+    throw new BadRequestException(
+      'Passwords do not match.',
+    );
+  }
 
-    const { data: existingUser } = await supabase
+  // Check whether mobile number is already registered
+  const { data: existingUser, error: checkError } =
+    await supabase
       .from('users')
-      .select('id')
+      .select('id, is_mobile_verified')
       .eq('mobile_number', mobileNumber)
       .maybeSingle();
 
-    if (existingUser) {
+  if (checkError) {
+    throw new BadRequestException(
+      checkError.message,
+    );
+  }
+
+  if (existingUser) {
+    if (!existingUser.is_mobile_verified) {
       throw new ConflictException(
-        'Mobile number already exists.',
+        'Registration already started. Please verify your OTP.',
       );
     }
 
-    const passwordHash = await bcrypt.hash(password, 12);
+    throw new ConflictException(
+      'Mobile number already exists.',
+    );
+  }
 
-    const { error } = await supabase
-      .from('users')
+  // Hash password temporarily
+  const passwordHash = await bcrypt.hash(
+    password,
+    12,
+  );
+
+  // Generate OTP
+  const otp = this.generateOtp();
+
+  // Remove any previous registration OTP
+  await supabase
+    .from('otp_codes')
+    .delete()
+    .eq('mobile_number', mobileNumber);
+
+  // Save OTP + password temporarily
+  const { error: otpError } =
+    await supabase
+      .from('otp_codes')
       .insert({
         mobile_number: mobileNumber,
+        otp,
         password_hash: passwordHash,
-        is_mobile_verified: false,
-        is_profile_completed: false,
+        expires_at: new Date(
+          Date.now() + 5 * 60 * 1000,
+        ).toISOString(),
       });
 
-    if (error) {
-      throw new BadRequestException(error.message);
-    }
-
-    const otp = this.generateOtp();
-
-    await this.saveOtp(mobileNumber, otp);
-
-    console.log(
-      `📲 Register OTP (${mobileNumber}) : ${otp}`,
+  if (otpError) {
+    throw new BadRequestException(
+      otpError.message,
     );
-
-    return {
-      success: true,
-      message: 'OTP sent successfully.',
-    };
   }
-    async verifyRegisterOtp(verifyOtpDto: VerifyOtpDto) {
-    const { mobileNumber, otp } = verifyOtpDto;
 
-    const { data: otpData, error } = await supabase
+  console.log(
+    `📲 Register OTP (${mobileNumber}) : ${otp}`,
+  );
+
+  return {
+    success: true,
+    message: 'OTP sent successfully.',
+  };
+}
+    async verifyRegisterOtp(
+  verifyOtpDto: VerifyOtpDto,
+) {
+  const {
+    mobileNumber,
+    otp,
+  } = verifyOtpDto;
+
+  // Find matching OTP
+  const { data: otpData, error: otpError } =
+    await supabase
       .from('otp_codes')
       .select('*')
       .eq('mobile_number', mobileNumber)
       .eq('otp', otp)
       .maybeSingle();
 
-    if (error) {
-      throw new BadRequestException(error.message);
-    }
-
-    if (!otpData) {
-      throw new UnauthorizedException('Invalid OTP.');
-    }
-
-    if (new Date(otpData.expires_at) < new Date()) {
-      throw new UnauthorizedException('OTP has expired.');
-    }
-
-    const { error: updateError } = await supabase
-      .from('users')
-      .update({
-        is_mobile_verified: true,
-      })
-      .eq('mobile_number', mobileNumber);
-
-    if (updateError) {
-      throw new BadRequestException(updateError.message);
-    }
-
-    await supabase
-      .from('otp_codes')
-      .delete()
-      .eq('mobile_number', mobileNumber);
-
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('mobile_number', mobileNumber)
-      .single();
-
-    if (userError || !user) {
-      throw new UnauthorizedException('User not found.');
-    }
-
-const accessToken = this.createAccessToken(user);
-const refreshToken = this.createRefreshToken(user);
-await this.saveRefreshToken(
-  user.id,
-  refreshToken,
-);
-    return {
-  success: true,
-  message: 'Registration completed successfully.',
-  accessToken,
-  refreshToken,
-  isProfileCompleted: user.is_profile_completed,
-};
+  if (otpError) {
+    throw new BadRequestException(
+      otpError.message,
+    );
   }
+
+  // Wrong OTP
+  if (!otpData) {
+    throw new UnauthorizedException(
+      'Invalid OTP.',
+    );
+  }
+
+  // OTP expired
+  if (
+    new Date(otpData.expires_at) < new Date()
+  ) {
+    throw new UnauthorizedException(
+      'OTP has expired.',
+    );
+  }
+
+  // Password was not saved with registration OTP
+  if (!otpData.password_hash) {
+    throw new BadRequestException(
+      'Registration data not found.',
+    );
+  }
+
+  // Create user ONLY after correct OTP
+  const {
+    data: user,
+    error: userError,
+  } = await supabase
+    .from('users')
+    .insert({
+      mobile_number: mobileNumber,
+      password_hash: otpData.password_hash,
+      is_mobile_verified: true,
+      is_profile_completed: false,
+    })
+    .select()
+    .single();
+
+  if (userError) {
+    throw new BadRequestException(
+      userError.message,
+    );
+  }
+
+  // Delete OTP after successful verification
+  await supabase
+    .from('otp_codes')
+    .delete()
+    .eq('mobile_number', mobileNumber);
+
+  // Create tokens
+  const accessToken =
+    this.createAccessToken(user);
+
+  const refreshToken =
+    this.createRefreshToken(user);
+
+  await this.saveRefreshToken(
+    user.id,
+    refreshToken,
+  );
+
+  return {
+    success: true,
+    message:
+      'Registration completed successfully.',
+    accessToken,
+    refreshToken,
+    isProfileCompleted:
+      user.is_profile_completed,
+  };
+}
 
   async login(loginDto: LoginDto) {
     const { mobileNumber, password } = loginDto;
