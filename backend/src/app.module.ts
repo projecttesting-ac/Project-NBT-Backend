@@ -9,6 +9,7 @@ import { UsersModule } from './users/users.module';
 import { EventsModule } from './events/events.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { ClubsModule } from './clubs/clubs.module';
+import { FriendsModule } from './friends/friends.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { ClubsModule } from './clubs/clubs.module';
     EventsModule,
     ConversationsModule,
     ClubsModule,
+    FriendsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
