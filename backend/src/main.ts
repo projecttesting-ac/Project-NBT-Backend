@@ -62,8 +62,9 @@ async function bootstrap() {
   const document = SwaggerModule.createDocument(app, config);
 
   SwaggerModule.setup('docs', app, document, {
-    useGlobalPrefix: true,
-  });
+  useGlobalPrefix: true,
+  jsonDocumentUrl: 'docs-json',
+});
 
   const port = Number(process.env.PORT) || 3000;
 

@@ -6,9 +6,13 @@ import {
   Param,
   Patch,
   Post,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { CreateConversationDto } from './dto/create-conversation.dto';
+
+import { FileInterceptor } from '@nestjs/platform-express';
+
 import { ConversationsService } from './conversations.service';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
@@ -23,21 +27,28 @@ export class ConversationsController {
   constructor(
     private readonly conversationsService: ConversationsService,
   ) {}
-// =========================
-// CREATE CONVERSATION
-// =========================
 
-@UseGuards(JwtAuthGuard)
-@Post()
-createConversation(
-  @CurrentUser() user: any,
-  @Body() dto: CreateConversationDto,
-) {
-  return this.conversationsService.createConversation(
-    user.id,
-    dto.targetUserId,
-  );
-}
+  // =========================
+  // CREATE CONVERSATION + SEND MESSAGE + OPTIONAL MEDIA
+  // =========================
+
+  @UseGuards(JwtAuthGuard)
+  @Post(':targetUserId')
+  @UseInterceptors(FileInterceptor('file'))
+  createConversation(
+    @CurrentUser() user: any,
+    @Param('targetUserId') targetUserId: string,
+    @Body() dto: SendMessageDto,
+    @UploadedFile() file: any,
+  ) {
+    return this.conversationsService.createConversationAndSendMessage(
+      user.id,
+      targetUserId,
+      dto,
+      file,
+    );
+  }
+
   // =========================
   // GET CONVERSATIONS
   // =========================
@@ -47,8 +58,6 @@ createConversation(
   getConversations(
     @CurrentUser() user: any,
   ) {
-    console.log('Logged in user:', user);
-
     return this.conversationsService.getConversations(
       user.id,
     );
@@ -76,15 +85,18 @@ createConversation(
 
   @UseGuards(JwtAuthGuard)
   @Post(':conversationId/messages')
+  @UseInterceptors(FileInterceptor('file'))
   sendMessage(
     @CurrentUser() user: any,
     @Param('conversationId') conversationId: string,
     @Body() dto: SendMessageDto,
+    @UploadedFile() file: any,
   ) {
     return this.conversationsService.sendMessage(
       user.id,
       conversationId,
       dto,
+      file,
     );
   }
 
@@ -204,7 +216,7 @@ createConversation(
 
   @UseGuards(JwtAuthGuard)
   @Post(':conversationId/messages/:messageId/reaction')
-  async addReaction(
+  addReaction(
     @CurrentUser() user: any,
     @Param('conversationId') conversationId: string,
     @Param('messageId') messageId: string,
@@ -224,7 +236,7 @@ createConversation(
 
   @UseGuards(JwtAuthGuard)
   @Delete(':conversationId/messages/:messageId/reaction')
-  async removeReaction(
+  removeReaction(
     @CurrentUser() user: any,
     @Param('conversationId') conversationId: string,
     @Param('messageId') messageId: string,
