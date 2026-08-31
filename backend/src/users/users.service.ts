@@ -304,5 +304,89 @@ async uploadAvatar(userId: string, file: any) {
     avatarUrl: publicUrl,
   };
 }
+async resolveQrProfile(qrId: string) {
+  if (!qrId) {
+    throw new BadRequestException('QR ID is required.');
+  }
 
+  const { data: user, error } = await supabase
+    .from('users')
+    .select(`
+      id,
+      qr_id,
+      username,
+      display_name,
+      bio,
+      interest,
+      pronouns,
+      city,
+      avatar_url,
+      profile_image,
+      is_online,
+      last_seen
+    `)
+    .eq('qr_id', qrId)
+    .maybeSingle();
+
+  if (error) {
+    throw new BadRequestException(error.message);
+  }
+
+  if (!user) {
+    throw new BadRequestException('Invalid or expired QR code.');
+  }
+
+  return {
+    success: true,
+    user: {
+      id: user.id,
+      qrId: user.qr_id,
+      username: user.username,
+      displayName: user.display_name,
+      bio: user.bio,
+      interest: user.interest,
+      pronouns: user.pronouns,
+      city: user.city,
+      avatarUrl: user.avatar_url ?? user.profile_image,
+      isOnline: user.is_online,
+      lastSeen: user.last_seen,
+    },
+  };
+}
+async getMyQr(userId: string) {
+  const { data: user, error } = await supabase
+    .from('users')
+    .select(`
+      id,
+      qr_id,
+      username,
+      display_name
+    `)
+    .eq('id', userId)
+    .single();
+
+  if (error || !user) {
+    throw new BadRequestException('User not found.');
+  }
+
+  if (!user.qr_id) {
+    throw new BadRequestException(
+      'QR ID has not been generated for this user.',
+    );
+  }
+
+  return {
+    success: true,
+    message: 'QR data generated successfully.',
+    data: {
+      qrId: user.qr_id,
+
+      // This is what the frontend puts inside the QR code.
+      qrData: user.qr_id,
+
+      username: user.username,
+      displayName: user.display_name,
+    },
+  };
+}
 }

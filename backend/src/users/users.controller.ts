@@ -101,4 +101,22 @@ export class UsersController {
       file,
     );
   }
+  // =========================
+// GENERATE / GET MY QR
+// =========================
+
+@UseGuards(JwtAuthGuard)
+@Post('qr')
+getMyQr(
+  @CurrentUser() user: any,
+) {
+  return this.usersService.getMyQr(user.id);
+}
+  @UseGuards(JwtAuthGuard)
+@Get('qr/:qrId')
+resolveQrProfile(
+  @Param('qrId') qrId: string,
+) {
+  return this.usersService.resolveQrProfile(qrId);
+}
 }
