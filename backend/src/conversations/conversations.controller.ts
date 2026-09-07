@@ -71,17 +71,18 @@ export class ConversationsController {
   // =========================
 
   @UseGuards(JwtAuthGuard)
-  @Get(':conversationId/messages')
-  getMessages(
-    @CurrentUser() user: any,
-    @Param('conversationId') conversationId: string,
-  ) {
-    return this.conversationsService.getMessages(
-      user.id,
-      conversationId,
-    );
-  }
-
+@Get(':conversationId/messages')
+getMessages(
+  @CurrentUser() user: any,
+  @Param('conversationId') conversationId: string,
+  @Query() pagination: PaginationDto,
+) {
+  return this.conversationsService.getMessages(
+    user.id,
+    conversationId,
+    pagination,
+  );
+}
   // =========================
   // SEND MESSAGE
   // =========================

@@ -448,48 +448,60 @@ export class ConversationsService {
 }
 
   // =========================================================
-  // GET MESSAGES
+// GET MESSAGES
+// =========================================================
+
+async getMessages(
+  userId: string,
+  conversationId: string,
+  pagination: PaginationDto,
+) {
+  // 1. Make sure the user belongs
+  //    to this conversation
+  const {
+    data: membership,
+    error: membershipError,
+  } = await supabase
+    .from('conversation_members')
+    .select('conversation_id')
+    .eq('conversation_id', conversationId)
+    .eq('user_id', userId)
+    .maybeSingle();
+
+  if (membershipError) {
+    throw new BadRequestException(
+      membershipError.message,
+    );
+  }
+
+  if (!membership) {
+    throw new BadRequestException(
+      'You are not a member of this conversation.',
+    );
+  }
+
+  // =========================================================
+  // 2. PAGINATION
   // =========================================================
 
-  async getMessages(
-    userId: string,
-    conversationId: string,
-  ) {
-    // 1. Make sure the user belongs
-    //    to this conversation
-    const {
-      data: membership,
-      error: membershipError,
-    } = await supabase
-      .from('conversation_members')
-      .select('conversation_id')
-      .eq(
-        'conversation_id',
-        conversationId,
-      )
-      .eq('user_id', userId)
-      .maybeSingle();
+  const page = pagination.page;
+  const limit = pagination.limit;
 
-    if (membershipError) {
-      throw new BadRequestException(
-        membershipError.message,
-      );
-    }
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
 
-    if (!membership) {
-      throw new BadRequestException(
-        'You are not a member of this conversation.',
-      );
-    }
+  // =========================================================
+  // 3. GET MESSAGES WITH PAGINATION
+  // =========================================================
 
-    // 2. Get messages with media
-    //    and reactions
-    const {
-      data: messages,
-      error,
-    } = await supabase
-      .from('messages')
-      .select(`
+  const {
+    data: messages,
+    error,
+    count: total,
+  } = await supabase
+    .from('messages')
+    .select(
+      `
         id,
         sender_id,
         content,
@@ -516,208 +528,245 @@ export class ConversationsService {
           reaction,
           created_at
         )
-      `)
-      .eq(
-        'conversation_id',
-        conversationId,
-      )
-      .order('created_at', {
-        ascending: true,
-      });
+      `,
+      {
+        count: 'exact',
+      },
+    )
+    .eq('conversation_id', conversationId)
+    .order('created_at', {
+      ascending: true,
+    })
+    .range(from, to);
 
-    if (error) {
-      throw new BadRequestException(
-        error.message,
-      );
-    }
+  if (error) {
+    throw new BadRequestException(
+      error.message,
+    );
+  }
 
-    // 3. Find other participant
+  // =========================================================
+  // 4. FIND OTHER PARTICIPANT
+  // =========================================================
+
+  const {
+    data: otherMember,
+    error: memberError,
+  } = await supabase
+    .from('conversation_members')
+    .select('user_id')
+    .eq('conversation_id', conversationId)
+    .neq('user_id', userId)
+    .maybeSingle();
+
+  if (memberError) {
+    throw new BadRequestException(
+      memberError.message,
+    );
+  }
+
+  let user: any = null;
+
+  // =========================================================
+  // 5. GET OTHER USER'S PROFILE
+  // =========================================================
+
+  if (otherMember) {
     const {
-      data: otherMember,
-      error: memberError,
+      data: otherUser,
+      error: userError,
     } = await supabase
-      .from('conversation_members')
-      .select('user_id')
-      .eq(
-        'conversation_id',
-        conversationId,
-      )
-      .neq('user_id', userId)
-      .maybeSingle();
-
-    if (memberError) {
-      throw new BadRequestException(
-        memberError.message,
-      );
-    }
-
-    let user: any = null;
-
-    // 4. Get other user's profile
-    if (otherMember) {
-      const {
-        data: otherUser,
-        error: userError,
-      } = await supabase
-        .from('users')
-        .select(`
+      .from('users')
+      .select(
+        `
           id,
           display_name,
           username,
           avatar_url,
           is_online,
           last_seen
-        `)
-        .eq(
-          'id',
-          otherMember.user_id,
-        )
-        .single();
+        `,
+      )
+      .eq('id', otherMember.user_id)
+      .single();
 
-      if (userError) {
-        throw new BadRequestException(
-          userError.message,
-        );
-      }
-
-      user = otherUser;
+    if (userError) {
+      throw new BadRequestException(
+        userError.message,
+      );
     }
 
-    // 5. Generate signed URLs
-    //    and format messages
-    const formattedMessages =
-      await Promise.all(
-        (messages ?? []).map(
-          async (message) => {
-            const media =
-              await Promise.all(
-                (
-                  message.message_media ??
-                  []
-                ).map(
-                  async (
-                    attachment: any,
-                  ) => {
-                    const mediaFile =
-                      attachment.media_files;
+    user = otherUser;
+  }
 
-                    if (!mediaFile) {
-                      return {
-                        mediaId:
-                          attachment.media_id,
-                        url: null,
-                      };
-                    }
+  // =========================================================
+  // 6. GENERATE SIGNED URLS + FORMAT MESSAGES
+  // =========================================================
 
-                    const {
-                      data:
-                        signedUrlData,
-                      error:
-                        signedUrlError,
-                    } =
-                      await supabase.storage
-                        .from('media')
-                        .createSignedUrl(
-                          mediaFile.storage_path,
-                          60 * 60,
-                        );
+  const formattedMessages =
+    await Promise.all(
+      (messages ?? []).map(
+        async (message) => {
+          const media =
+            await Promise.all(
+              (
+                message.message_media ??
+                []
+              ).map(
+                async (
+                  attachment: any,
+                ) => {
+                  const mediaFile =
+                    attachment.media_files;
 
-                    if (signedUrlError) {
-                      throw new BadRequestException(
-                        signedUrlError.message,
-                      );
-                    }
-
+                  if (!mediaFile) {
                     return {
                       mediaId:
                         attachment.media_id,
-                      id: mediaFile.id,
-                      originalName:
-                        mediaFile.original_name,
-                      mimeType:
-                        mediaFile.mime_type,
-                      sizeBytes:
-                        mediaFile.size_bytes,
-                      url:
-                        signedUrlData
-                          ?.signedUrl ??
-                        null,
-                      expiresIn: 3600,
+                      url: null,
                     };
-                  },
-                ),
-              );
+                  }
 
-            // Format reactions
-            const reactions =
-              message.message_reactions ??
-              [];
+                  const {
+                    data:
+                      signedUrlData,
+                    error:
+                      signedUrlError,
+                  } =
+                    await supabase.storage
+                      .from('media')
+                      .createSignedUrl(
+                        mediaFile.storage_path,
+                        60 * 60,
+                      );
 
-            const reactionCounts:
-              Record<string, number> = {};
+                  if (signedUrlError) {
+                    throw new BadRequestException(
+                      signedUrlError.message,
+                    );
+                  }
 
-            for (
-              const reaction of reactions
-            ) {
-              reactionCounts[
-                reaction.reaction
-              ] =
-                (
-                  reactionCounts[
-                    reaction.reaction
-                  ] ?? 0
-                ) + 1;
-            }
+                  return {
+                    mediaId:
+                      attachment.media_id,
+                    id: mediaFile.id,
+                    originalName:
+                      mediaFile.original_name,
+                    mimeType:
+                      mediaFile.mime_type,
+                    sizeBytes:
+                      mediaFile.size_bytes,
+                    url:
+                      signedUrlData
+                        ?.signedUrl ??
+                      null,
+                    expiresIn: 3600,
+                  };
+                },
+              ),
+            );
 
-            const formattedReactions =
-              Object.entries(
-                reactionCounts,
-              ).map(
-                ([reaction, count]) => ({
-                  reaction,
-                  count,
-                  reactedByMe:
-                    reactions.some(
-                      (item: any) =>
-                        item.user_id ===
-                          userId &&
-                        item.reaction ===
-                          reaction,
-                    ),
-                }),
-              );
+          // Format reactions
+          const reactions =
+            message.message_reactions ??
+            [];
 
-            return {
-              id: message.id,
-              senderId:
-                message.sender_id,
-              content:
-                message.content,
-              createdAt:
-                message.created_at,
-              isRead:
-                message.is_read,
-              deliveredAt:
-                message.delivered_at,
-              seenAt:
-                message.seen_at,
-              replyToMessageId:
-                message.reply_to_message_id,
-              media,
-              reactions:
-                formattedReactions,
-            };
-          },
-        ),
-      );
+          const reactionCounts:
+            Record<string, number> = {};
 
-    // 6. Return messages
-    return {
-      success: true,
-      user,
-      messages: formattedMessages,
-    };
-  }
+          for (
+            const reaction of reactions
+          ) {
+            reactionCounts[
+              reaction.reaction
+            ] =
+              (
+                reactionCounts[
+                  reaction.reaction
+                ] ?? 0
+              ) + 1;
+          }
+
+          const formattedReactions =
+            Object.entries(
+              reactionCounts,
+            ).map(
+              ([reaction, count]) => ({
+                reaction,
+                count,
+                reactedByMe:
+                  reactions.some(
+                    (item: any) =>
+                      item.user_id ===
+                        userId &&
+                      item.reaction ===
+                        reaction,
+                  ),
+              }),
+            );
+
+          return {
+            id: message.id,
+            senderId:
+              message.sender_id,
+            content:
+              message.content,
+            createdAt:
+              message.created_at,
+            isRead:
+              message.is_read,
+            deliveredAt:
+              message.delivered_at,
+            seenAt:
+              message.seen_at,
+            replyToMessageId:
+              message.reply_to_message_id,
+            media,
+            reactions:
+              formattedReactions,
+          };
+        },
+      ),
+    );
+
+  // =========================================================
+  // 7. PAGINATION METADATA
+  // =========================================================
+
+  const totalCount = total ?? 0;
+
+  const totalPages =
+    totalCount > 0
+      ? Math.ceil(
+          totalCount / limit,
+        )
+      : 0;
+
+  // =========================================================
+  // 8. RETURN
+  // =========================================================
+
+  return {
+    success: true,
+
+    user,
+
+    messages: formattedMessages,
+
+    pagination: {
+      page,
+      limit,
+      total: totalCount,
+      totalPages,
+
+      hasNextPage:
+        page < totalPages,
+
+      hasPreviousPage:
+        page > 1,
+    },
+  };
+}
 
   // =========================================================
   // SEND MESSAGE
