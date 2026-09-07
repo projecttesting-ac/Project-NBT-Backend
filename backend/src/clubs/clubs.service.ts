@@ -1,36 +1,93 @@
 import {BadRequestException, Injectable,} 
 from '@nestjs/common';
 import { supabase } from '../config/supabase';
+import { CreateClubDto } from './dto/create-club.dto';
+import { PaginationDto } from '../common/dto/pagination.dto';
 
 @Injectable()
 export class ClubsService {
-  async findAll(userId: string) {
-  const { data: clubs, error } = await supabase
+ async createClub(userId: string, dto: CreateClubDto) {
+  const { data: club, error: clubError } = await supabase
     .from('clubs')
-    .select('*')
-    .order('created_at', { ascending: false });
+    .insert({
+      name: dto.name,
+      category: dto.category,
+      description: dto.description,
+      cover_image_url: dto.coverImageUrl ?? null,
+      created_by: userId,
+    })
+    .select()
+    .single();
 
-  if (error) {
-    throw new BadRequestException(error.message);
+  if (clubError) {
+    throw new BadRequestException(clubError.message);
+  }
+
+  // Make the creator the first member of the club
+  const { error: memberError } = await supabase
+    .from('club_members')
+    .insert({
+      club_id: club.id,
+      user_id: userId,
+    });
+
+  if (memberError) {
+    throw new BadRequestException(memberError.message);
+  }
+
+  return {
+    success: true,
+    message: 'Club created successfully.',
+    club: {
+      id: club.id,
+      name: club.name,
+      category: club.category,
+      description: club.description,
+      coverImageUrl: club.cover_image_url,
+      createdBy: club.created_by,
+      createdAt: club.created_at,
+      updatedAt: club.updated_at,
+    },
+  };
+}
+
+async findAll(userId: string, pagination: PaginationDto) {
+  const page = pagination.page;
+  const limit = pagination.limit;
+
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+
+  // Get clubs with pagination
+  const {
+    data: clubs,
+    error: clubsError,
+    count,
+  } = await supabase
+    .from('clubs')
+    .select('*', { count: 'exact' })
+    .order('created_at', { ascending: false })
+    .range(from, to);
+
+  if (clubsError) {
+    throw new BadRequestException(clubsError.message);
   }
 
   const clubsWithDetails = await Promise.all(
-    clubs.map(async (club) => {
-      // Get total member count
+    (clubs ?? []).map(async (club) => {
+      // Get member count
       const { count: memberCount, error: countError } =
         await supabase
           .from('club_members')
           .select('id', {
             count: 'exact',
             head: true,
-  })
+          })
           .eq('club_id', club.id);
 
       if (countError) {
-        throw new BadRequestException(
-          countError.message,
-        );
-  }
+        throw new BadRequestException(countError.message);
+      }
 
       // Check whether current user joined
       const { data: membership, error: membershipError } =
@@ -61,11 +118,23 @@ export class ClubsService {
     }),
   );
 
+  const total = count ?? 0;
+  const totalPages = Math.ceil(total / limit);
+
   return {
     success: true,
     clubs: clubsWithDetails,
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPreviousPage: page > 1,
+    },
   };
 }
+
   async joinClub(
   userId: string,
   clubId: string,
@@ -444,8 +513,12 @@ async getMembers(clubId: string) {
     joinedAt: member.joined_at,
   }));
 
+  // Count total members
+  const memberCount = safeMembers.length;
+
   return {
     success: true,
+    memberCount,
     members: safeMembers,
   };
 }

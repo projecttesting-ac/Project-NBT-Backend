@@ -9,6 +9,7 @@ import { ForwardMessageDto } from './dto/forward-message.dto';
 
 import { supabase } from '../config/supabase';
 import { MediaService } from '../media/media.service';
+import { PaginationDto } from 'src/common/dto/pagination.dto';
 
 @Injectable()
 export class ConversationsService {
@@ -219,153 +220,232 @@ export class ConversationsService {
   // =========================================================
 
   async getConversations(
-    userId: string,
-  ) {
-    const {
-      data: memberships,
-      error: membershipError,
-    } = await supabase
-      .from('conversation_members')
-      .select('conversation_id')
-      .eq('user_id', userId);
+  userId: string,
+  pagination: PaginationDto,
+) {
+  // =========================================================
+  // PAGINATION
+  // =========================================================
 
-    if (membershipError) {
-      throw new BadRequestException(
-        membershipError.message,
-      );
-    }
+  const page = pagination.page;
+  const limit = pagination.limit;
+
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+
+  // =========================================================
+  // GET USER'S CONVERSATIONS WITH PAGINATION
+  // =========================================================
+
+  const {
+    data: memberships,
+    error: membershipError,
+    count: total,
+  } = await supabase
+    .from('conversation_members')
+    .select('conversation_id', {
+      count: 'exact',
+    })
+    .eq('user_id', userId)
+    .range(from, to);
+
+  if (membershipError) {
+    throw new BadRequestException(
+      membershipError.message,
+    );
+  }
+
+  // =========================================================
+  // NO CONVERSATIONS
+  // =========================================================
+
+  if (!memberships || memberships.length === 0) {
+    return {
+      success: true,
+      conversations: [],
+      pagination: {
+        page,
+        limit,
+        total: total ?? 0,
+        totalPages:
+          total && total > 0
+            ? Math.ceil(total / limit)
+            : 0,
+        hasNextPage: false,
+        hasPreviousPage: page > 1,
+      },
+    };
+  }
+
+  // =========================================================
+  // GET CONVERSATION DATA
+  // =========================================================
+
+  const conversations: any[] = [];
+
+  for (const membership of memberships) {
+    // -------------------------------------------------------
+    // Conversation details
+    // -------------------------------------------------------
+
+    const {
+      data: conversation,
+      error: conversationError,
+    } = await supabase
+      .from('conversations')
+      .select('*')
+      .eq(
+        'id',
+        membership.conversation_id,
+      )
+      .single();
 
     if (
-      !memberships ||
-      memberships.length === 0
+      conversationError ||
+      !conversation
     ) {
-      return {
-        success: true,
-        conversations: [],
-      };
+      continue;
     }
 
-    const conversations: any[] = [];
+    // -------------------------------------------------------
+    // Other participant
+    // -------------------------------------------------------
 
-    for (const membership of memberships) {
-      // Conversation details
+    const {
+      data: otherMember,
+      error: memberError,
+    } = await supabase
+      .from('conversation_members')
+      .select('user_id')
+      .eq(
+        'conversation_id',
+        membership.conversation_id,
+      )
+      .neq('user_id', userId)
+      .maybeSingle();
+
+    if (memberError) {
+      continue;
+    }
+
+    let user: any = null;
+
+    // -------------------------------------------------------
+    // Other user's profile
+    // -------------------------------------------------------
+
+    if (otherMember) {
       const {
-        data: conversation,
-        error: conversationError,
+        data: otherUser,
+        error: userError,
       } = await supabase
-        .from('conversations')
-        .select('*')
+        .from('users')
+        .select(`
+          id,
+          display_name,
+          username,
+          avatar_url,
+          is_online,
+          last_seen
+        `)
         .eq(
           'id',
-          membership.conversation_id,
+          otherMember.user_id,
         )
         .single();
 
-      if (
-        conversationError ||
-        !conversation
-      ) {
-        continue;
+      if (!userError) {
+        user = otherUser;
       }
-
-      // Other participant
-      const {
-        data: otherMember,
-        error: memberError,
-      } = await supabase
-        .from('conversation_members')
-        .select('user_id')
-        .eq(
-          'conversation_id',
-          membership.conversation_id,
-        )
-        .neq('user_id', userId)
-        .maybeSingle();
-
-      if (memberError) {
-        continue;
-      }
-
-      let user: any = null;
-
-      // Other user's profile
-      if (otherMember) {
-        const {
-          data: otherUser,
-          error: userError,
-        } = await supabase
-          .from('users')
-          .select(`
-            id,
-            display_name,
-            username,
-            avatar_url,
-            is_online,
-            last_seen
-          `)
-          .eq(
-            'id',
-            otherMember.user_id,
-          )
-          .single();
-
-        if (!userError) {
-          user = otherUser;
-        }
-      }
-
-      // Last message
-      const {
-        data: lastMessage,
-      } = await supabase
-        .from('messages')
-        .select(
-          'content, created_at',
-        )
-        .eq(
-          'conversation_id',
-          membership.conversation_id,
-        )
-        .order('created_at', {
-          ascending: false,
-        })
-        .limit(1)
-        .maybeSingle();
-
-      // Unread count
-      const {
-        count: unreadCount,
-      } = await supabase
-        .from('messages')
-        .select('*', {
-          count: 'exact',
-          head: true,
-        })
-        .eq(
-          'conversation_id',
-          membership.conversation_id,
-        )
-        .eq('is_read', false)
-        .neq('sender_id', userId);
-
-      conversations.push({
-        id: conversation.id,
-        type: conversation.type,
-        user,
-        lastMessage:
-          lastMessage?.content ?? null,
-        lastMessageTime:
-          lastMessage?.created_at ?? null,
-        unreadCount:
-          unreadCount ?? 0,
-      });
     }
 
-    return {
-      success: true,
-      conversations,
-    };
+    // -------------------------------------------------------
+    // Last message
+    // -------------------------------------------------------
+
+    const {
+      data: lastMessage,
+    } = await supabase
+      .from('messages')
+      .select(
+        'content, created_at',
+      )
+      .eq(
+        'conversation_id',
+        membership.conversation_id,
+      )
+      .order('created_at', {
+        ascending: false,
+      })
+      .limit(1)
+      .maybeSingle();
+
+    // -------------------------------------------------------
+    // Unread count
+    // -------------------------------------------------------
+
+    const {
+      count: unreadCount,
+    } = await supabase
+      .from('messages')
+      .select('*', {
+        count: 'exact',
+        head: true,
+      })
+      .eq(
+        'conversation_id',
+        membership.conversation_id,
+      )
+      .eq('is_read', false)
+      .neq('sender_id', userId);
+
+    // -------------------------------------------------------
+    // Add conversation
+    // -------------------------------------------------------
+
+    conversations.push({
+      id: conversation.id,
+      type: conversation.type,
+      user,
+      lastMessage:
+        lastMessage?.content ?? null,
+      lastMessageTime:
+        lastMessage?.created_at ?? null,
+      unreadCount:
+        unreadCount ?? 0,
+    });
   }
+
+  // =========================================================
+  // PAGINATION METADATA
+  // =========================================================
+
+  const totalCount = total ?? 0;
+
+  const totalPages =
+    totalCount > 0
+      ? Math.ceil(
+          totalCount / limit,
+        )
+      : 0;
+
+  return {
+    success: true,
+
+    conversations,
+
+    pagination: {
+      page,
+      limit,
+      total: totalCount,
+      totalPages,
+      hasNextPage:
+        page < totalPages,
+      hasPreviousPage:
+        page > 1,
+    },
+  };
+}
 
   // =========================================================
   // GET MESSAGES

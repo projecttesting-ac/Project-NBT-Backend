@@ -5,6 +5,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UseGuards,
   UseInterceptors,
   UploadedFile,
@@ -18,6 +19,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { EventsService } from './events.service';
 import { UpdateEventStatusDto } from './dto/update-event-status.dto';
+import { PaginationDto } from '../common/dto/pagination.dto';
 @Controller('events')
 export class EventsController {
   constructor(
@@ -49,8 +51,12 @@ export class EventsController {
     return this.eventsService.create(user.id, dto);
   }
   @Get()
-getAllEvents() {
-  return this.eventsService.findAll();
+getAllEvents(
+  @Query() pagination: PaginationDto,
+) {
+  return this.eventsService.findAll(
+    pagination,
+  );
 }
 @Get(':id')
 getEventById(

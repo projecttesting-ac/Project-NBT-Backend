@@ -21,7 +21,8 @@ import { SendMessageDto } from './dto/send-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { ForwardMessageDto } from './dto/forward-message.dto';
 import { ReactMessageDto } from './dto/react-message.dto';
-
+import { Query } from '@nestjs/common';
+import { PaginationDto } from '../common/dto/pagination.dto';
 @Controller('conversations')
 export class ConversationsController {
   constructor(
@@ -56,12 +57,14 @@ export class ConversationsController {
   @UseGuards(JwtAuthGuard)
   @Get()
   getConversations(
-    @CurrentUser() user: any,
-  ) {
-    return this.conversationsService.getConversations(
-      user.id,
-    );
-  }
+  @CurrentUser() user: any,
+  @Query() pagination: PaginationDto,
+) {
+  return this.conversationsService.getConversations(
+    user.id,
+    pagination,
+  );
+}
 
   // =========================
   // GET MESSAGES

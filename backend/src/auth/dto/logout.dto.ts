@@ -1,10 +1,7 @@
-import { IsNotEmpty, IsString } from 'class-validator';
-
-
-/*class LogoutDto {
- refreshToken: string;
- logout button and then confirmation button
-}*/
+import {
+  IsNotEmpty,
+  IsString,
+} from 'class-validator';
 
 export class LogoutDto {
   @IsString()

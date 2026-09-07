@@ -6,7 +6,7 @@ import { CreateEventDto } from './dto/create-event.dto';
 import { randomUUID } from 'crypto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { supabase } from '../config/supabase';
-
+import { PaginationDto } from '../common/dto/pagination.dto';
 @Injectable()
 export class EventsService {
   private convertEventDate(eventDate?: string): string | undefined {
@@ -124,18 +124,41 @@ event_date: this.convertEventDate(dto.eventDate),
     event: data,
   };
 }
-async findAll() {
-  const { data, error } = await supabase
-  .from('events')
-  .select('*')
-  .order('event_date', { ascending: true });
+async findAll(pagination: PaginationDto) {
+  const page = pagination.page;
+  const limit = pagination.limit;
+
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+
+  const {
+    data,
+    error,
+    count,
+  } = await supabase
+    .from('events')
+    .select('*', { count: 'exact' })
+    .order('event_date', { ascending: true })
+    .range(from, to);
+
   if (error) {
     throw new BadRequestException(error.message);
   }
 
+  const total = count ?? 0;
+  const totalPages = Math.ceil(total / limit);
+
   return {
     success: true,
-    events: data,
+    events: data ?? [],
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasNextPage: page < totalPages,
+      hasPreviousPage: page > 1,
+    },
   };
 }
 async findOne(id: string) {
