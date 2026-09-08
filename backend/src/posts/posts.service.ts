@@ -1,0 +1,539 @@
+import {
+  BadRequestException,
+  Injectable,
+} from '@nestjs/common';
+
+import { supabase } from '../config/supabase';
+import { PaginationDto } from '../common/dto/pagination.dto';
+
+@Injectable()
+export class PostsService {
+
+  // =========================================================
+  // CREATE POST
+  // =========================================================
+
+  async createPost(
+    userId: string,
+    content: string,
+  ) {
+    if (!content || !content.trim()) {
+      throw new BadRequestException(
+        'Post content cannot be empty.',
+      );
+    }
+
+    const {
+      data,
+      error,
+    } = await supabase
+      .from('posts')
+      .insert({
+        user_id: userId,
+        content: content.trim(),
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(
+        error.message,
+      );
+    }
+
+    return {
+      success: true,
+      message: 'Post created successfully.',
+      data,
+    };
+  }
+
+    // =========================================================
+  // UPDATE POST
+  // =========================================================
+
+  async updatePost(
+    userId: string,
+    postId: string,
+    dto: { content: string },
+  ) {
+    if (!dto.content || !dto.content.trim()) {
+      throw new BadRequestException(
+        'Post content cannot be empty.',
+      );
+    }
+
+    const {
+      data,
+      error,
+    } = await supabase
+      .from('posts')
+      .update({
+        content: dto.content.trim(),
+        is_edited: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', postId)
+      .eq('user_id', userId)
+      .eq('is_deleted', false)
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      throw new BadRequestException(
+        error.message,
+      );
+    }
+
+    if (!data) {
+      throw new BadRequestException(
+        'Post not found or you are not the owner.',
+      );
+    }
+
+    return {
+      success: true,
+      message: 'Post updated successfully.',
+      data,
+    };
+  }
+  
+    // =========================================================
+  // GET POSTS
+  // =========================================================
+
+  // =========================================================
+// GET POSTS
+// =========================================================
+
+async getPosts(
+  pagination: PaginationDto,
+  userId?: string,
+) {
+  const page = pagination.page;
+  const limit = pagination.limit;
+
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+
+  const {
+    data: posts,
+    error,
+    count: total,
+  } = await supabase
+    .from('posts')
+    .select(
+      `
+      id,
+      user_id,
+      content,
+      created_at,
+      updated_at,
+      is_edited,
+      is_deleted,
+      visibility,
+      views_count
+      `,
+      {
+        count: 'exact',
+      },
+    )
+    .eq('is_deleted', false)
+    .order('created_at', {
+      ascending: false,
+    })
+    .range(from, to);
+
+  if (error) {
+    throw new BadRequestException(
+      error.message,
+    );
+  }
+
+  // Get likes and comments for these posts
+  const postIds = (posts ?? []).map(
+    (post) => post.id,
+  );
+
+  let likes: any[] = [];
+  let comments: any[] = [];
+
+  if (postIds.length > 0) {
+
+    // Get likes
+    const {
+      data: likesData,
+      error: likesError,
+    } = await supabase
+      .from('post_likes')
+      .select('post_id, user_id')
+      .in('post_id', postIds);
+
+    if (likesError) {
+      throw new BadRequestException(
+        likesError.message,
+      );
+    }
+
+    likes = likesData ?? [];
+
+    // Get comments
+    const {
+      data: commentsData,
+      error: commentsError,
+    } = await supabase
+      .from('post_comments')
+      .select('post_id')
+      .in('post_id', postIds)
+      .eq('is_deleted', false);
+
+    if (commentsError) {
+      throw new BadRequestException(
+        commentsError.message,
+      );
+    }
+
+    comments = commentsData ?? [];
+  }
+
+  // Add likesCount, isLiked and commentsCount
+  const postsWithLikes = (posts ?? []).map(
+    (post) => {
+
+      const postLikes = likes.filter(
+        (like) =>
+          like.post_id === post.id,
+      );
+
+      const commentsCount = comments.filter(
+        (comment) =>
+          comment.post_id === post.id,
+      ).length;
+
+      return {
+        ...post,
+
+        likesCount: postLikes.length,
+
+        isLiked: userId
+          ? postLikes.some(
+              (like) =>
+                like.user_id === userId,
+            )
+          : false,
+
+        commentsCount,
+      };
+    },
+  );
+
+  const totalCount = total ?? 0;
+
+  const totalPages =
+    totalCount > 0
+      ? Math.ceil(
+          totalCount / limit,
+        )
+      : 0;
+
+  return {
+    success: true,
+
+    posts: postsWithLikes,
+
+    pagination: {
+      page,
+      limit,
+      total: totalCount,
+      totalPages,
+
+      hasNextPage:
+        page < totalPages,
+
+      hasPreviousPage:
+        page > 1,
+    },
+  };
+}
+
+  // =========================================================
+  // GET SINGLE POST
+  // =========================================================
+
+  async getPostById(
+    postId: string,
+    userId: string,
+  ) {
+    const {
+      data,
+      error,
+    } = await supabase
+      .from('posts')
+      .select(
+        `
+        id,
+        user_id,
+        content,
+        created_at,
+        updated_at,
+        is_edited,
+        is_deleted,
+        visibility,
+        views_count
+        `,
+      )
+      .eq('id', postId)
+      .eq('is_deleted', false)
+      .maybeSingle();
+
+    if (error) {
+      throw new BadRequestException(
+        error.message,
+      );
+    }
+
+    if (!data) {
+      throw new BadRequestException(
+        'Post not found.',
+      );
+    }
+
+    // Get likes for this post
+    const {
+      data: likes,
+      error: likesError,
+    } = await supabase
+      .from('post_likes')
+      .select('user_id')
+      .eq('post_id', postId);
+
+    if (likesError) {
+      throw new BadRequestException(
+        likesError.message,
+      );
+    }
+
+    const postLikes = likes ?? [];
+
+    const isLiked = postLikes.some(
+      (like) =>
+        like.user_id === userId,
+    );
+
+    return {
+      success: true,
+
+      data: {
+        ...data,
+
+        likesCount: postLikes.length,
+
+        isLiked,
+      },
+    };
+  }
+
+  // =========================================================
+  // DELETE POST
+  // =========================================================
+
+  async deletePost(
+    userId: string,
+    postId: string,
+  ) {
+    const {
+      data,
+      error,
+    } = await supabase
+      .from('posts')
+      .update({
+        is_deleted: true,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('id', postId)
+      .eq('user_id', userId)
+      .eq('is_deleted', false)
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      throw new BadRequestException(
+        error.message,
+      );
+    }
+
+    if (!data) {
+      throw new BadRequestException(
+        'Post not found or you are not the owner.',
+      );
+    }
+
+    return {
+      success: true,
+      message: 'Post deleted successfully.',
+      data,
+    };
+  }
+
+  // =========================================================
+  // INCREMENT POST VIEW
+  // =========================================================
+
+  // =========================================================
+// INCREMENT POST VIEW
+// =========================================================
+
+async viewPost(
+  userId: string,
+  postId: string,
+) {
+  const {
+    data,
+    error,
+  } = await supabase.rpc(
+    'record_post_view',
+    {
+      p_post_id: postId,
+      p_user_id: userId,
+    },
+  );
+
+  if (error) {
+    throw new BadRequestException(
+      error.message,
+    );
+  }
+
+  const result = data?.[0];
+
+  if (!result) {
+    throw new BadRequestException(
+      'Unable to record post view.',
+    );
+  }
+
+  return {
+    success: true,
+
+    message: result.viewed
+      ? 'Post viewed successfully.'
+      : 'Post already viewed.',
+
+    viewsCount: result.views_count,
+  };
+}
+    // =========================================================
+  // LIKE POST
+  // =========================================================
+
+  async likePost(
+    userId: string,
+    postId: string,
+  ) {
+    // Check post exists
+    const {
+      data: post,
+      error: postError,
+    } = await supabase
+      .from('posts')
+      .select('id')
+      .eq('id', postId)
+      .eq('is_deleted', false)
+      .maybeSingle();
+
+    if (postError) {
+      throw new BadRequestException(
+        postError.message,
+      );
+    }
+
+    if (!post) {
+      throw new BadRequestException(
+        'Post not found.',
+      );
+    }
+
+    // Check whether user already liked it
+    const {
+      data: existingLike,
+      error: likeCheckError,
+    } = await supabase
+      .from('post_likes')
+      .select('id')
+      .eq('post_id', postId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (likeCheckError) {
+      throw new BadRequestException(
+        likeCheckError.message,
+      );
+    }
+
+    if (existingLike) {
+      return {
+        success: true,
+        message: 'Post already liked.',
+      };
+    }
+
+    // Create like
+    const {
+      data,
+      error,
+    } = await supabase
+      .from('post_likes')
+      .insert({
+        post_id: postId,
+        user_id: userId,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(
+        error.message,
+      );
+    }
+
+    return {
+      success: true,
+      message: 'Post liked successfully.',
+      data,
+    };
+  }
+
+  // =========================================================
+  // UNLIKE POST
+  // =========================================================
+
+  async unlikePost(
+    userId: string,
+    postId: string,
+  ) {
+    const {
+      data,
+      error,
+    } = await supabase
+      .from('post_likes')
+      .delete()
+      .eq('post_id', postId)
+      .eq('user_id', userId)
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      throw new BadRequestException(
+        error.message,
+      );
+    }
+
+    return {
+      success: true,
+      message: data
+        ? 'Post unliked successfully.'
+        : 'Post was not liked.',
+      data,
+    };
+  }
+}

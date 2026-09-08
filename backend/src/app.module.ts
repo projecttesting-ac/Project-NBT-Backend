@@ -10,6 +10,7 @@ import { EventsModule } from './events/events.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { ClubsModule } from './clubs/clubs.module';
 import { FriendsModule } from './friends/friends.module';
+import { PostsModule } from './posts/posts.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { FriendsModule } from './friends/friends.module';
     ConversationsModule,
     ClubsModule,
     FriendsModule,
+    PostsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
