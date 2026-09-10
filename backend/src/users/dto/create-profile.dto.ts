@@ -1,16 +1,12 @@
 import {
-  IsDateString,
+  ArrayMaxSize,
+  IsArray,
   IsOptional,
   IsString,
   MaxLength,
 } from 'class-validator';
 
 export class CreateProfileDto {
-  @IsString()
-  @MaxLength(100)
-  fullName!: string;
-
-
 
   @IsString()
   @MaxLength(30)
@@ -26,16 +22,18 @@ export class CreateProfileDto {
   bio?: string;
 
   @IsOptional()
-  @IsString()
-  interest?: string;
+@IsArray()
+@IsString({ each: true })
+@ArrayMaxSize(20)
+interest?: string[];
 
   @IsOptional()
   @IsString()
   pronouns?: string;
 
   @IsOptional()
-  @IsDateString()
-  dateOfBirth?: string;
+@IsString()
+dateOfBirth?: string;
 
   @IsOptional()
   @IsString()
