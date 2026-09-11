@@ -150,4 +150,36 @@ getPostById(
       postId,
     );
   }
+  // =========================================================
+// SAVE POST
+// =========================================================
+
+@UseGuards(JwtAuthGuard)
+@Post(':postId/save')
+savePost(
+  @CurrentUser() user: any,
+  @Param('postId') postId: string,
+) {
+  return this.postsService.savePost(
+    user.id,
+    postId,
+  );
+}
+
+
+// =========================================================
+// UNSAVE POST
+// =========================================================
+
+@UseGuards(JwtAuthGuard)
+@Delete(':postId/save')
+unsavePost(
+  @CurrentUser() user: any,
+  @Param('postId') postId: string,
+) {
+  return this.postsService.unsavePost(
+    user.id,
+    postId,
+  );
+}
 }

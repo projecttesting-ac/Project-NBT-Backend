@@ -48,7 +48,7 @@ export class PostsService {
     };
   }
 
-    // =========================================================
+  // =========================================================
   // UPDATE POST
   // =========================================================
 
@@ -97,164 +97,227 @@ export class PostsService {
       data,
     };
   }
-  
-    // =========================================================
+
+  // =========================================================
   // GET POSTS
   // =========================================================
 
-  // =========================================================
-// GET POSTS
-// =========================================================
+  async getPosts(
+    pagination: PaginationDto,
+    userId?: string,
+  ) {
+    const page = pagination.page;
+    const limit = pagination.limit;
 
-async getPosts(
-  pagination: PaginationDto,
-  userId?: string,
-) {
-  const page = pagination.page;
-  const limit = pagination.limit;
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
 
-  const from = (page - 1) * limit;
-  const to = from + limit - 1;
+    const {
+      data: posts,
+      error,
+      count: total,
+    } = await supabase
+      .from('posts')
+      .select(
+        `
+        id,
+        user_id,
+        content,
+        created_at,
+        updated_at,
+        is_edited,
+        is_deleted,
+        visibility,
+        views_count
+        `,
+        {
+          count: 'exact',
+        },
+      )
+      .eq('is_deleted', false)
+      .order('created_at', {
+        ascending: false,
+      })
+      .range(from, to);
 
-  const {
-    data: posts,
-    error,
-    count: total,
-  } = await supabase
-    .from('posts')
-    .select(
-      `
-      id,
-      user_id,
-      content,
-      created_at,
-      updated_at,
-      is_edited,
-      is_deleted,
-      visibility,
-      views_count
-      `,
-      {
-        count: 'exact',
-      },
-    )
-    .eq('is_deleted', false)
-    .order('created_at', {
-      ascending: false,
-    })
-    .range(from, to);
+    if (error) {
+      throw new BadRequestException(
+        error.message,
+      );
+    }
 
-  if (error) {
-    throw new BadRequestException(
-      error.message,
+    // Get likes, comments and saves
+    // for these posts
+    const postIds = (posts ?? []).map(
+      (post) => post.id,
     );
-  }
 
-  // Get likes and comments for these posts
-  const postIds = (posts ?? []).map(
-    (post) => post.id,
-  );
+    let likes: any[] = [];
+    let comments: any[] = [];
+    let saves: any[] = [];
 
-  let likes: any[] = [];
-  let comments: any[] = [];
+    if (postIds.length > 0) {
 
-  if (postIds.length > 0) {
+      // -------------------------------------------------------
+      // GET LIKES
+      // -------------------------------------------------------
 
-    // Get likes
-    const {
-      data: likesData,
-      error: likesError,
-    } = await supabase
-      .from('post_likes')
-      .select('post_id, user_id')
-      .in('post_id', postIds);
+      const {
+        data: likesData,
+        error: likesError,
+      } = await supabase
+        .from('post_likes')
+        .select('post_id, user_id')
+        .in('post_id', postIds);
 
-    if (likesError) {
-      throw new BadRequestException(
-        likesError.message,
-      );
+      if (likesError) {
+        throw new BadRequestException(
+          likesError.message,
+        );
+      }
+
+      likes = likesData ?? [];
+
+      // -------------------------------------------------------
+      // GET COMMENTS
+      // -------------------------------------------------------
+
+      const {
+        data: commentsData,
+        error: commentsError,
+      } = await supabase
+        .from('post_comments')
+        .select('post_id')
+        .in('post_id', postIds)
+        .eq('is_deleted', false);
+
+      if (commentsError) {
+        throw new BadRequestException(
+          commentsError.message,
+        );
+      }
+
+      comments = commentsData ?? [];
+
+      // -------------------------------------------------------
+      // GET SAVES
+      // -------------------------------------------------------
+
+      const {
+        data: savesData,
+        error: savesError,
+      } = await supabase
+        .from('post_saves')
+        .select('post_id, user_id')
+        .in('post_id', postIds);
+
+      if (savesError) {
+        throw new BadRequestException(
+          savesError.message,
+        );
+      }
+
+      saves = savesData ?? [];
     }
 
-    likes = likesData ?? [];
+    // Add:
+    // likesCount
+    // isLiked
+    // commentsCount
+    // savesCount
+    // isSaved
 
-    // Get comments
-    const {
-      data: commentsData,
-      error: commentsError,
-    } = await supabase
-      .from('post_comments')
-      .select('post_id')
-      .in('post_id', postIds)
-      .eq('is_deleted', false);
+    const postsWithCounts = (posts ?? []).map(
+      (post) => {
 
-    if (commentsError) {
-      throw new BadRequestException(
-        commentsError.message,
-      );
-    }
+        // -----------------------------------------------------
+        // LIKES
+        // -----------------------------------------------------
 
-    comments = commentsData ?? [];
+        const postLikes = likes.filter(
+          (like) =>
+            like.post_id === post.id,
+        );
+
+        // -----------------------------------------------------
+        // COMMENTS
+        // -----------------------------------------------------
+
+        const commentsCount = comments.filter(
+          (comment) =>
+            comment.post_id === post.id,
+        ).length;
+
+        // -----------------------------------------------------
+        // SAVES
+        // -----------------------------------------------------
+
+        const postSaves = saves.filter(
+          (save) =>
+            save.post_id === post.id,
+        );
+
+        const savesCount = postSaves.length;
+
+        // -----------------------------------------------------
+        // RETURN POST
+        // -----------------------------------------------------
+
+        return {
+          ...post,
+
+          likesCount:
+            postLikes.length,
+
+          isLiked: userId
+            ? postLikes.some(
+                (like) =>
+                  like.user_id === userId,
+              )
+            : false,
+
+          commentsCount,
+
+          savesCount,
+
+          isSaved: userId
+            ? postSaves.some(
+                (save) =>
+                  save.user_id === userId,
+              )
+            : false,
+        };
+      },
+    );
+
+    const totalCount = total ?? 0;
+
+    const totalPages =
+      totalCount > 0
+        ? Math.ceil(
+            totalCount / limit,
+          )
+        : 0;
+
+    return {
+      success: true,
+
+      posts: postsWithCounts,
+
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages,
+
+        hasNextPage:
+          page < totalPages,
+
+        hasPreviousPage:
+          page > 1,
+      },
+    };
   }
-
-  // Add likesCount, isLiked and commentsCount
-  const postsWithLikes = (posts ?? []).map(
-    (post) => {
-
-      const postLikes = likes.filter(
-        (like) =>
-          like.post_id === post.id,
-      );
-
-      const commentsCount = comments.filter(
-        (comment) =>
-          comment.post_id === post.id,
-      ).length;
-
-      return {
-        ...post,
-
-        likesCount: postLikes.length,
-
-        isLiked: userId
-          ? postLikes.some(
-              (like) =>
-                like.user_id === userId,
-            )
-          : false,
-
-        commentsCount,
-      };
-    },
-  );
-
-  const totalCount = total ?? 0;
-
-  const totalPages =
-    totalCount > 0
-      ? Math.ceil(
-          totalCount / limit,
-        )
-      : 0;
-
-  return {
-    success: true,
-
-    posts: postsWithLikes,
-
-    pagination: {
-      page,
-      limit,
-      total: totalCount,
-      totalPages,
-
-      hasNextPage:
-        page < totalPages,
-
-      hasPreviousPage:
-        page > 1,
-    },
-  };
-}
 
   // =========================================================
   // GET SINGLE POST
@@ -264,6 +327,10 @@ async getPosts(
     postId: string,
     userId: string,
   ) {
+    // -------------------------------------------------------
+    // GET POST
+    // -------------------------------------------------------
+
     const {
       data,
       error,
@@ -298,7 +365,10 @@ async getPosts(
       );
     }
 
-    // Get likes for this post
+    // -------------------------------------------------------
+    // GET LIKES
+    // -------------------------------------------------------
+
     const {
       data: likes,
       error: likesError,
@@ -315,10 +385,69 @@ async getPosts(
 
     const postLikes = likes ?? [];
 
-    const isLiked = postLikes.some(
-      (like) =>
-        like.user_id === userId,
-    );
+    const likesCount =
+      postLikes.length;
+
+    const isLiked =
+      postLikes.some(
+        (like) =>
+          like.user_id === userId,
+      );
+
+    // -------------------------------------------------------
+    // GET COMMENTS COUNT
+    // -------------------------------------------------------
+
+    const {
+      count: commentsCount,
+      error: commentsError,
+    } = await supabase
+      .from('post_comments')
+      .select('id', {
+        count: 'exact',
+        head: true,
+      })
+      .eq('post_id', postId)
+      .eq('is_deleted', false);
+
+    if (commentsError) {
+      throw new BadRequestException(
+        commentsError.message,
+      );
+    }
+
+    // -------------------------------------------------------
+    // GET SAVES
+    // -------------------------------------------------------
+
+    const {
+      data: saves,
+      error: savesError,
+    } = await supabase
+      .from('post_saves')
+      .select('user_id')
+      .eq('post_id', postId);
+
+    if (savesError) {
+      throw new BadRequestException(
+        savesError.message,
+      );
+    }
+
+    const postSaves = saves ?? [];
+
+    const savesCount =
+      postSaves.length;
+
+    const isSaved =
+      postSaves.some(
+        (save) =>
+          save.user_id === userId,
+      );
+
+    // -------------------------------------------------------
+    // RESPONSE
+    // -------------------------------------------------------
 
     return {
       success: true,
@@ -326,9 +455,16 @@ async getPosts(
       data: {
         ...data,
 
-        likesCount: postLikes.length,
+        likesCount,
 
         isLiked,
+
+        commentsCount:
+          commentsCount ?? 0,
+
+        savesCount,
+
+        isSaved,
       },
     };
   }
@@ -379,50 +515,48 @@ async getPosts(
   // INCREMENT POST VIEW
   // =========================================================
 
+  async viewPost(
+    userId: string,
+    postId: string,
+  ) {
+    const {
+      data,
+      error,
+    } = await supabase.rpc(
+      'record_post_view',
+      {
+        p_post_id: postId,
+        p_user_id: userId,
+      },
+    );
+
+    if (error) {
+      throw new BadRequestException(
+        error.message,
+      );
+    }
+
+    const result = data?.[0];
+
+    if (!result) {
+      throw new BadRequestException(
+        'Unable to record post view.',
+      );
+    }
+
+    return {
+      success: true,
+
+      message: result.viewed
+        ? 'Post viewed successfully.'
+        : 'Post already viewed.',
+
+      viewsCount:
+        result.views_count,
+    };
+  }
+
   // =========================================================
-// INCREMENT POST VIEW
-// =========================================================
-
-async viewPost(
-  userId: string,
-  postId: string,
-) {
-  const {
-    data,
-    error,
-  } = await supabase.rpc(
-    'record_post_view',
-    {
-      p_post_id: postId,
-      p_user_id: userId,
-    },
-  );
-
-  if (error) {
-    throw new BadRequestException(
-      error.message,
-    );
-  }
-
-  const result = data?.[0];
-
-  if (!result) {
-    throw new BadRequestException(
-      'Unable to record post view.',
-    );
-  }
-
-  return {
-    success: true,
-
-    message: result.viewed
-      ? 'Post viewed successfully.'
-      : 'Post already viewed.',
-
-    viewsCount: result.views_count,
-  };
-}
-    // =========================================================
   // LIKE POST
   // =========================================================
 
@@ -533,6 +667,121 @@ async viewPost(
       message: data
         ? 'Post unliked successfully.'
         : 'Post was not liked.',
+      data,
+    };
+  }
+
+  // =========================================================
+  // SAVE POST
+  // =========================================================
+
+  async savePost(
+    userId: string,
+    postId: string,
+  ) {
+    // Check post exists
+    const {
+      data: post,
+      error: postError,
+    } = await supabase
+      .from('posts')
+      .select('id')
+      .eq('id', postId)
+      .eq('is_deleted', false)
+      .maybeSingle();
+
+    if (postError) {
+      throw new BadRequestException(
+        postError.message,
+      );
+    }
+
+    if (!post) {
+      throw new BadRequestException(
+        'Post not found.',
+      );
+    }
+
+    // Check whether user already saved it
+    const {
+      data: existingSave,
+      error: saveCheckError,
+    } = await supabase
+      .from('post_saves')
+      .select('id')
+      .eq('post_id', postId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (saveCheckError) {
+      throw new BadRequestException(
+        saveCheckError.message,
+      );
+    }
+
+    if (existingSave) {
+      return {
+        success: true,
+        message: 'Post already saved.',
+      };
+    }
+
+    // Create save
+    const {
+      data,
+      error,
+    } = await supabase
+      .from('post_saves')
+      .insert({
+        post_id: postId,
+        user_id: userId,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(
+        error.message,
+      );
+    }
+
+    return {
+      success: true,
+      message: 'Post saved successfully.',
+      data,
+    };
+  }
+
+  // =========================================================
+  // UNSAVE POST
+  // =========================================================
+
+  async unsavePost(
+    userId: string,
+    postId: string,
+  ) {
+    const {
+      data,
+      error,
+    } = await supabase
+      .from('post_saves')
+      .delete()
+      .eq('post_id', postId)
+      .eq('user_id', userId)
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      throw new BadRequestException(
+        error.message,
+      );
+    }
+
+    return {
+      success: true,
+      message: data
+        ? 'Post unsaved successfully.'
+        : 'Post was not saved.',
       data,
     };
   }

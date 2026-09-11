@@ -9,7 +9,9 @@ import { supabase } from '../config/supabase';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 @Injectable()
 export class UsersService {
-  private convertDateOfBirth(dateOfBirth?: string): string | undefined {
+  private convertDateOfBirth(
+  dateOfBirth?: string,
+): string | undefined {
   if (!dateOfBirth) {
     return undefined;
   }
@@ -38,14 +40,28 @@ export class UsersService {
   const monthNumber = Number(month);
   const yearNumber = Number(year);
 
-  const date = new Date(yearNumber, monthNumber - 1, dayNumber);
+  const date = new Date(
+    yearNumber,
+    monthNumber - 1,
+    dayNumber,
+  );
 
+  // Check if the date is actually valid
   if (
     date.getFullYear() !== yearNumber ||
     date.getMonth() !== monthNumber - 1 ||
     date.getDate() !== dayNumber
   ) {
-    throw new BadRequestException('Invalid date of birth.');
+    throw new BadRequestException(
+      'Invalid date of birth.',
+    );
+  }
+
+  // Only allow DOB years from 1990 to 2012
+  if (yearNumber < 1990 || yearNumber > 2012) {
+    throw new BadRequestException(
+  'You must be at least 14 years old.',
+);
   }
 
   return `${year}-${month}-${day}`;
@@ -53,6 +69,7 @@ export class UsersService {
   async createProfile(userId: string, dto: CreateProfileDto) {
 
   // Check if user already has a completed profile
+  
   const { data: existingProfile, error: profileError } =
     await supabase
       .from('users')

@@ -1,50 +1,71 @@
 import {
+  ArrayMaxSize,
+  ArrayUnique,
+  IsArray,
   IsOptional,
   IsString,
-  IsDateString,
+  Matches,
   MaxLength,
+  MinLength,
   IsUrl,
-  IsArray,
-  ArrayMaxSize,
 } from 'class-validator';
 
 export class UpdateProfileDto {
   @IsOptional()
   @IsString()
+  @MinLength(2)
   @MaxLength(50)
-  displayName!: string;
+  @Matches(/^[A-Za-z]+(?: [A-Za-z]+)+$/, {
+  message:
+    'Display name must contain at least a first name and last name.',
+})
+  displayName?: string;
 
   @IsOptional()
   @IsString()
+  @MinLength(3)
   @MaxLength(30)
-  username!: string;
+  @Matches(/^[a-z0-9_]+$/, {
+    message:
+      'Username can contain only lowercase letters, numbers, and underscores.',
+  })
+  username?: string;
 
   @IsOptional()
   @IsString()
-  @MaxLength(150)
-  bio!: string;
+  @MaxLength(300)
+  bio?: string;
 
   @IsOptional()
   @IsString()
   @MaxLength(50)
-  city!: string;
+  @Matches(/^[A-Za-z]+(?:[ -][A-Za-z]+)*$/, {
+    message:
+      'City must contain only letters, spaces, or hyphens.',
+  })
+  city?: string;
 
   @IsOptional()
   @IsArray()
-  @IsString({ each: true })
   @ArrayMaxSize(20)
-  interest!: string[];
+  @ArrayUnique()
+  @IsString({ each: true })
+  @Matches(/.*\S.*/, {
+    each: true,
+    message: 'Interest cannot be empty.',
+  })
+  interest?: string[];
 
   @IsOptional()
   @IsString()
   @MaxLength(20)
-  pronouns!: string;
+  pronouns?: string;
 
   @IsOptional()
-@IsString()
-dateOfBirth!: string;
+  @IsString()
+  dateOfBirth?: string;
 
   @IsOptional()
   @IsUrl()
-  avatarUrl!: string;
+  avatarUrl?: string;
 }
