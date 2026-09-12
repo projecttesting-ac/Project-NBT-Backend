@@ -5,9 +5,13 @@ import {
 } from '@nestjs/common';
 
 import { supabase } from '../config/supabase';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class FriendsService {
+  constructor(
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   // =========================================================
   // SEND FRIEND REQUEST
@@ -47,16 +51,16 @@ export class FriendsService {
 
     // Check already friends
     const {
-  data: friendship,
-  error: friendshipError,
-} = await supabase
-  .from('friendships')
-  .select('id')
-  .or(
-    `and(user_id.eq.${senderId},friend_id.eq.${receiverId}),and(user_id.eq.${receiverId},friend_id.eq.${senderId})`,
-  )
-  .limit(1)
-  .maybeSingle();
+      data: friendship,
+      error: friendshipError,
+    } = await supabase
+      .from('friendships')
+      .select('id')
+      .or(
+        `and(user_id.eq.${senderId},friend_id.eq.${receiverId}),and(user_id.eq.${receiverId},friend_id.eq.${senderId})`,
+      )
+      .limit(1)
+      .maybeSingle();
 
     if (friendshipError) {
       throw new BadRequestException(
@@ -121,6 +125,26 @@ export class FriendsService {
     if (insertError) {
       throw new BadRequestException(
         insertError.message,
+      );
+    }
+
+    // Create notification for receiver
+    try {
+      await this.notificationsService.createNotification(
+        receiverId,
+        'FRIEND_REQUEST',
+        'New friend request',
+        'You received a new friend request.',
+        senderId,
+        request.id,
+        'friend_request',
+      );
+    } catch (notificationError) {
+      // The friend request itself was successful.
+      // Notification failure should not fail the request.
+      console.error(
+        'Failed to create friend request notification:',
+        notificationError,
       );
     }
 
@@ -288,6 +312,7 @@ export class FriendsService {
       });
 
     if (secondError) {
+      // Roll back first friendship
       await supabase
         .from('friendships')
         .delete()
@@ -320,6 +345,26 @@ export class FriendsService {
     if (updateError) {
       throw new BadRequestException(
         updateError.message,
+      );
+    }
+
+    // Notify original sender
+    try {
+      await this.notificationsService.createNotification(
+        request.sender_id,
+        'FRIEND_REQUEST_ACCEPTED',
+        'Friend request accepted',
+        'Your friend request was accepted.',
+        userId,
+        request.id,
+        'friend_request',
+      );
+    } catch (notificationError) {
+      // Friendship acceptance itself was successful.
+      // Notification failure should not fail the action.
+      console.error(
+        'Failed to create friend request accepted notification:',
+        notificationError,
       );
     }
 
@@ -645,16 +690,16 @@ export class FriendsService {
     }
 
     const {
-  data: friendship,
-  error: friendshipError,
-} = await supabase
-  .from('friendships')
-  .select('id')
-  .or(
-    `and(user_id.eq.${userId},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${userId})`,
-  )
-  .limit(1)
-  .maybeSingle();
+      data: friendship,
+      error: friendshipError,
+    } = await supabase
+      .from('friendships')
+      .select('id')
+      .or(
+        `and(user_id.eq.${userId},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${userId})`,
+      )
+      .limit(1)
+      .maybeSingle();
 
     if (friendshipError) {
       throw new BadRequestException(
@@ -759,7 +804,9 @@ export class FriendsService {
       );
     }
 
-    const friendIds = (friendships ?? []).map(
+    const friendIds = (
+      friendships ?? []
+    ).map(
       (item) => item.friend_id,
     );
 
@@ -933,102 +980,105 @@ export class FriendsService {
       status: 'not_friends',
     };
   }
+
   // =========================================================
-// MUTUAL FRIENDS
-// =========================================================
+  // MUTUAL FRIENDS
+  // =========================================================
 
-async getMutualFriends(
-  userId: string,
-  otherUserId: string,
-) {
-  if (userId === otherUserId) {
+  async getMutualFriends(
+    userId: string,
+    otherUserId: string,
+  ) {
+    if (userId === otherUserId) {
+      return {
+        success: true,
+        count: 0,
+        mutualFriends: [],
+      };
+    }
+
+    // Get logged-in user's friends
+    const {
+      data: myFriendships,
+      error: myFriendsError,
+    } = await supabase
+      .from('friendships')
+      .select('friend_id')
+      .eq('user_id', userId);
+
+    if (myFriendsError) {
+      throw new BadRequestException(
+        myFriendsError.message,
+      );
+    }
+
+    // Get other user's friends
+    const {
+      data: otherFriendships,
+      error: otherFriendsError,
+    } = await supabase
+      .from('friendships')
+      .select('friend_id')
+      .eq('user_id', otherUserId);
+
+    if (otherFriendsError) {
+      throw new BadRequestException(
+        otherFriendsError.message,
+      );
+    }
+
+    const myFriendIds = new Set(
+      (myFriendships ?? []).map(
+        (friend) => friend.friend_id,
+      ),
+    );
+
+    // Find common friends
+    const mutualFriendIds = (
+      otherFriendships ?? []
+    )
+      .map(
+        (friend) => friend.friend_id,
+      )
+      .filter((friendId) =>
+        myFriendIds.has(friendId),
+      );
+
+    if (mutualFriendIds.length === 0) {
+      return {
+        success: true,
+        count: 0,
+        mutualFriends: [],
+      };
+    }
+
+    // Get profiles of mutual friends
+    const {
+      data: mutualFriends,
+      error: usersError,
+    } = await supabase
+      .from('users')
+      .select(`
+        id,
+        username,
+        display_name,
+        avatar_url,
+        city,
+        is_online,
+        last_seen
+      `)
+      .in('id', mutualFriendIds);
+
+    if (usersError) {
+      throw new BadRequestException(
+        usersError.message,
+      );
+    }
+
     return {
       success: true,
-      count: 0,
-      mutualFriends: [],
+      count: mutualFriendIds.length,
+      mutualFriends: mutualFriends ?? [],
     };
   }
-
-  // Get logged-in user's friends
-  const {
-    data: myFriendships,
-    error: myFriendsError,
-  } = await supabase
-    .from('friendships')
-    .select('friend_id')
-    .eq('user_id', userId);
-
-  if (myFriendsError) {
-    throw new BadRequestException(
-      myFriendsError.message,
-    );
-  }
-
-  // Get other user's friends
-  const {
-    data: otherFriendships,
-    error: otherFriendsError,
-  } = await supabase
-    .from('friendships')
-    .select('friend_id')
-    .eq('user_id', otherUserId);
-
-  if (otherFriendsError) {
-    throw new BadRequestException(
-      otherFriendsError.message,
-    );
-  }
-
-  const myFriendIds = new Set(
-    (myFriendships ?? []).map(
-      (friend) => friend.friend_id,
-    ),
-  );
-
-  // Find common friends
-  const mutualFriendIds = (
-    otherFriendships ?? []
-  )
-    .map((friend) => friend.friend_id)
-    .filter((friendId) =>
-      myFriendIds.has(friendId),
-    );
-
-  if (mutualFriendIds.length === 0) {
-    return {
-      success: true,
-      count: 0,
-      mutualFriends: [],
-    };
-  }
-
-  // Get profiles of mutual friends
-  const {
-    data: mutualFriends,
-    error: usersError,
-  } = await supabase
-    .from('users')
-    .select(`
-      id,
-      username,
-      display_name,
-      avatar_url,
-      city,
-      is_online,
-      last_seen
-    `)
-    .in('id', mutualFriendIds);
-
-  if (usersError) {
-    throw new BadRequestException(
-      usersError.message,
-    );
-  }
-
-  return {
-    success: true,
-    count: mutualFriendIds.length,
-    mutualFriends: mutualFriends ?? [],
-  };
-}
 }

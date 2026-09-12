@@ -5,48 +5,69 @@ import {
 
 import { supabase } from '../config/supabase';
 import { PaginationDto } from '../common/dto/pagination.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class PostsService {
 
+  constructor(
+    private readonly notificationsService: NotificationsService,
+  ) {}
+
   // =========================================================
-  // CREATE POST
-  // =========================================================
+// CREATE POST
+// =========================================================
 
-  async createPost(
-    userId: string,
-    content: string,
-  ) {
-    if (!content || !content.trim()) {
-      throw new BadRequestException(
-        'Post content cannot be empty.',
-      );
-    }
-
-    const {
-      data,
-      error,
-    } = await supabase
-      .from('posts')
-      .insert({
-        user_id: userId,
-        content: content.trim(),
-      })
-      .select()
-      .single();
-
-    if (error) {
-      throw new BadRequestException(
-        error.message,
-      );
-    }
-
-    return {
-      success: true,
-      message: 'Post created successfully.',
-      data,
-    };
+async createPost(
+  userId: string,
+  content: string,
+) {
+  if (!content || !content.trim()) {
+    throw new BadRequestException(
+      'Post content cannot be empty.',
+    );
   }
+
+  const trimmedContent =
+    content.trim();
+
+  const {
+    data,
+    error,
+  } = await supabase
+    .from('posts')
+    .insert({
+      user_id: userId,
+      content: trimmedContent,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    throw new BadRequestException(
+      error.message,
+    );
+  }
+
+  // =======================================================
+  // CREATE MENTION NOTIFICATIONS
+  // =======================================================
+
+  await this.notificationsService
+    .notifyMentionedUsers(
+      trimmedContent,
+      userId,
+      data.id,
+      'POST',
+    );
+
+  return {
+    success: true,
+    message:
+      'Post created successfully.',
+    data,
+  };
+}
 
   // =========================================================
   // UPDATE POST
@@ -570,7 +591,7 @@ export class PostsService {
       error: postError,
     } = await supabase
       .from('posts')
-      .select('id')
+      .select('id, user_id')
       .eq('id', postId)
       .eq('is_deleted', false)
       .maybeSingle();
@@ -629,6 +650,21 @@ export class PostsService {
         error.message,
       );
     }
+
+    // =======================================================
+    // CREATE POST LIKE NOTIFICATION
+    // =======================================================
+
+    await this.notificationsService
+      .tryCreateNotification(
+        post.user_id,
+        'POST_LIKE',
+        'New like',
+        'Someone liked your post.',
+        userId,
+        postId,
+        'POST',
+      );
 
     return {
       success: true,

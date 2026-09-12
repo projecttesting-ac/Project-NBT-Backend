@@ -6,7 +6,13 @@ import { PostsService } from './posts.service';
 import { CommentsController } from './comments.controller';
 import { CommentsService } from './comments.service';
 
+import { NotificationsModule } from '../notifications/notifications.module';
+
 @Module({
+  imports: [
+    NotificationsModule,
+  ],
+
   controllers: [
     PostsController,
     CommentsController,

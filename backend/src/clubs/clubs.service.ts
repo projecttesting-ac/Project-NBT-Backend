@@ -10,32 +10,49 @@ import { CreateClubDto } from './dto/create-club.dto';
 import { UpdateClubDto } from './dto/update-club.dto';
 
 import { PaginationDto } from '../common/dto/pagination.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class ClubsService {
+
+  constructor(
+    private readonly notificationsService: NotificationsService,
+  ) {}
+
   // =========================================================
   // CREATE CLUB
   // =========================================================
 
-  async createClub(userId: string, dto: CreateClubDto) {
-    const { data: club, error: clubError } = await supabase
+  async createClub(
+    userId: string,
+    dto: CreateClubDto,
+  ) {
+    const {
+      data: club,
+      error: clubError,
+    } = await supabase
       .from('clubs')
       .insert({
         name: dto.name,
         category: dto.category,
         description: dto.description,
-        cover_image_url: dto.coverImageUrl ?? null,
+        cover_image_url:
+          dto.coverImageUrl ?? null,
         created_by: userId,
       })
       .select()
       .single();
 
     if (clubError) {
-      throw new BadRequestException(clubError.message);
+      throw new BadRequestException(
+        clubError.message,
+      );
     }
 
     // Creator becomes the first ADMIN
-    const { error: memberError } = await supabase
+    const {
+      error: memberError,
+    } = await supabase
       .from('club_members')
       .insert({
         club_id: club.id,
@@ -50,18 +67,22 @@ export class ClubsService {
         .delete()
         .eq('id', club.id);
 
-      throw new BadRequestException(memberError.message);
+      throw new BadRequestException(
+        memberError.message,
+      );
     }
 
     return {
       success: true,
-      message: 'Club created successfully.',
+      message:
+        'Club created successfully.',
       club: {
         id: club.id,
         name: club.name,
         category: club.category,
         description: club.description,
-        coverImageUrl: club.cover_image_url,
+        coverImageUrl:
+          club.cover_image_url,
         createdBy: club.created_by,
         createdAt: club.created_at,
         updatedAt: club.updated_at,
@@ -89,7 +110,9 @@ export class ClubsService {
       count,
     } = await supabase
       .from('clubs')
-      .select('*', { count: 'exact' })
+      .select('*', {
+        count: 'exact',
+      })
       .order('created_at', {
         ascending: false,
       })
@@ -101,61 +124,76 @@ export class ClubsService {
       );
     }
 
-    const clubsWithDetails = await Promise.all(
-      (clubs ?? []).map(async (club) => {
-        const {
-          count: memberCount,
-          error: countError,
-        } = await supabase
-          .from('club_members')
-          .select('id', {
-            count: 'exact',
-            head: true,
-          })
-          .eq('club_id', club.id);
+    const clubsWithDetails =
+      await Promise.all(
+        (clubs ?? []).map(
+          async (club) => {
+            const {
+              count: memberCount,
+              error: countError,
+            } = await supabase
+              .from('club_members')
+              .select('id', {
+                count: 'exact',
+                head: true,
+              })
+              .eq('club_id', club.id);
 
-        if (countError) {
-          throw new BadRequestException(
-            countError.message,
-          );
-        }
+            if (countError) {
+              throw new BadRequestException(
+                countError.message,
+              );
+            }
 
-        const {
-          data: membership,
-          error: membershipError,
-        } = await supabase
-          .from('club_members')
-          .select('id, role')
-          .eq('club_id', club.id)
-          .eq('user_id', userId)
-          .maybeSingle();
+            const {
+              data: membership,
+              error:
+                membershipError,
+            } = await supabase
+              .from('club_members')
+              .select('id, role')
+              .eq('club_id', club.id)
+              .eq('user_id', userId)
+              .maybeSingle();
 
-        if (membershipError) {
-          throw new BadRequestException(
-            membershipError.message,
-          );
-        }
+            if (membershipError) {
+              throw new BadRequestException(
+                membershipError.message,
+              );
+            }
 
-        return {
-          id: club.id,
-          name: club.name,
-          category: club.category,
-          description: club.description,
-          coverImageUrl: club.cover_image_url,
-          memberCount: memberCount ?? 0,
-          isJoined: !!membership,
-          role: membership?.role ?? null,
-          createdBy: club.created_by,
-          createdAt: club.created_at,
-          updatedAt: club.updated_at,
-        };
-      }),
-    );
+            return {
+              id: club.id,
+              name: club.name,
+              category: club.category,
+              description:
+                club.description,
+              coverImageUrl:
+                club.cover_image_url,
+              memberCount:
+                memberCount ?? 0,
+              isJoined:
+                !!membership,
+              role:
+                membership?.role ??
+                null,
+              createdBy:
+                club.created_by,
+              createdAt:
+                club.created_at,
+              updatedAt:
+                club.updated_at,
+            };
+          },
+        ),
+      );
 
     const total = count ?? 0;
-    const totalPages = Math.ceil(
-      total / limit,
-    );
+
+    const totalPages =
+      Math.ceil(
+        total / limit,
+      );
 
     return {
       success: true,
@@ -165,8 +203,10 @@ export class ClubsService {
         limit,
         total,
         totalPages,
-        hasNextPage: page < totalPages,
-        hasPreviousPage: page > 1,
+        hasNextPage:
+          page < totalPages,
+        hasPreviousPage:
+          page > 1,
       },
     };
   }
@@ -179,13 +219,16 @@ export class ClubsService {
     userId: string,
     clubId: string,
   ) {
-    // Check club exists
+    // -------------------------------------------------------
+    // CHECK CLUB
+    // -------------------------------------------------------
+
     const {
       data: club,
       error: clubError,
     } = await supabase
       .from('clubs')
-      .select('id')
+      .select('id, name')
       .eq('id', clubId)
       .maybeSingle();
 
@@ -201,7 +244,10 @@ export class ClubsService {
       );
     }
 
-    // Check existing membership
+    // -------------------------------------------------------
+    // CHECK EXISTING MEMBERSHIP
+    // -------------------------------------------------------
+
     const {
       data: existingMember,
       error: memberError,
@@ -223,19 +269,24 @@ export class ClubsService {
         success: true,
         message:
           'You have already joined this club.',
-        role: existingMember.role,
+        role:
+          existingMember.role,
       };
     }
 
-    // Normal users join as MEMBER
-    const { error: joinError } =
-      await supabase
-        .from('club_members')
-        .insert({
-          club_id: clubId,
-          user_id: userId,
-          role: 'member',
-        });
+    // -------------------------------------------------------
+    // CREATE MEMBERSHIP
+    // -------------------------------------------------------
+
+    const {
+      error: joinError,
+    } = await supabase
+      .from('club_members')
+      .insert({
+        club_id: clubId,
+        user_id: userId,
+        role: 'member',
+      });
 
     if (joinError) {
       throw new BadRequestException(
@@ -243,9 +294,54 @@ export class ClubsService {
       );
     }
 
+    // =======================================================
+    // CLUB JOIN NOTIFICATION
+    // =======================================================
+    //
+    // Notify every admin of the club.
+    //
+    // The joining user will never receive their own
+    // notification because NotificationsService protects
+    // against actorId === userId.
+    //
+
+    const {
+      data: admins,
+      error: adminsError,
+    } = await supabase
+      .from('club_members')
+      .select('user_id')
+      .eq('club_id', clubId)
+      .eq('role', 'admin');
+
+    if (!adminsError && admins) {
+      await Promise.all(
+        admins.map((admin) =>
+          this.notificationsService
+            .tryCreateNotification(
+              admin.user_id,
+              'CLUB_JOIN',
+              'New club member',
+              'Someone joined your club.',
+              userId,
+              clubId,
+              'CLUB',
+            ),
+        ),
+      );
+    } else if (adminsError) {
+      // Do not fail the join if notification
+      // recipient lookup fails.
+      console.error(
+        'Unable to find club admins for notification:',
+        adminsError.message,
+      );
+    }
+
     return {
       success: true,
-      message: 'Joined club successfully.',
+      message:
+        'Joined club successfully.',
       role: 'member',
     };
   }
@@ -280,7 +376,8 @@ export class ClubsService {
       );
     }
 
-    // If admin is leaving, make sure another admin exists
+    // If admin is leaving,
+    // make sure another admin exists
     if (membership.role === 'admin') {
       const {
         count: adminCount,
@@ -300,7 +397,9 @@ export class ClubsService {
         );
       }
 
-      if ((adminCount ?? 0) <= 1) {
+      if (
+        (adminCount ?? 0) <= 1
+      ) {
         throw new BadRequestException(
           'You are the only admin. Promote another member to admin before leaving the club.',
         );
@@ -323,7 +422,8 @@ export class ClubsService {
 
     return {
       success: true,
-      message: 'Left club successfully.',
+      message:
+        'Left club successfully.',
     };
   }
 
@@ -331,7 +431,9 @@ export class ClubsService {
   // SUGGESTED CLUBS
   // =========================================================
 
-  async getSuggested(userId: string) {
+  async getSuggested(
+    userId: string,
+  ) {
     const {
       data: user,
       error: userError,
@@ -347,9 +449,10 @@ export class ClubsService {
       );
     }
 
-    const interests = Array.isArray(user.interest)
-      ? user.interest
-      : [];
+    const interests =
+      Array.isArray(user.interest)
+        ? user.interest
+        : [];
 
     const {
       data: clubs,
@@ -368,74 +471,99 @@ export class ClubsService {
     }
 
     const suggestedClubs =
-      (clubs ?? []).filter((club) =>
-        interests.some(
-          (interest: string) =>
-            interest
-              .trim()
-              .toLowerCase() ===
-            club.category
-              .trim()
-              .toLowerCase(),
-        ),
+      (clubs ?? []).filter(
+        (club) =>
+          interests.some(
+            (interest: string) =>
+              interest
+                .trim()
+                .toLowerCase() ===
+              club.category
+                .trim()
+                .toLowerCase(),
+          ),
       );
 
     const clubsWithDetails =
       await Promise.all(
-        suggestedClubs.map(async (club) => {
-          const {
-            count: memberCount,
-            error: countError,
-          } = await supabase
-            .from('club_members')
-            .select('id', {
-              count: 'exact',
-              head: true,
-            })
-            .eq('club_id', club.id);
+        suggestedClubs.map(
+          async (club) => {
+            const {
+              count: memberCount,
+              error: countError,
+            } = await supabase
+              .from('club_members')
+              .select('id', {
+                count: 'exact',
+                head: true,
+              })
+              .eq(
+                'club_id',
+                club.id,
+              );
 
-          if (countError) {
-            throw new BadRequestException(
-              countError.message,
-            );
-          }
+            if (countError) {
+              throw new BadRequestException(
+                countError.message,
+              );
+            }
 
-          const {
-            data: membership,
-            error: membershipError,
-          } = await supabase
-            .from('club_members')
-            .select('id, role')
-            .eq('club_id', club.id)
-            .eq('user_id', userId)
-            .maybeSingle();
+            const {
+              data: membership,
+              error:
+                membershipError,
+            } = await supabase
+              .from('club_members')
+              .select(
+                'id, role',
+              )
+              .eq(
+                'club_id',
+                club.id,
+              )
+              .eq(
+                'user_id',
+                userId,
+              )
+              .maybeSingle();
 
-          if (membershipError) {
-            throw new BadRequestException(
-              membershipError.message,
-            );
-          }
+            if (membershipError) {
+              throw new BadRequestException(
+                membershipError.message,
+              );
+            }
 
-          return {
-            id: club.id,
-            name: club.name,
-            category: club.category,
-            description: club.description,
-            coverImageUrl:
-              club.cover_image_url,
-            memberCount: memberCount ?? 0,
-            isJoined: !!membership,
-            role: membership?.role ?? null,
-            createdBy: club.created_by,
-            createdAt: club.created_at,
-            updatedAt: club.updated_at,
-          };
-        }),
+            return {
+              id: club.id,
+              name: club.name,
+              category:
+                club.category,
+              description:
+                club.description,
+              coverImageUrl:
+                club.cover_image_url,
+              memberCount:
+                memberCount ?? 0,
+              isJoined:
+                !!membership,
+              role:
+                membership?.role ??
+                null,
+              createdBy:
+                club.created_by,
+              createdAt:
+                club.created_at,
+              updatedAt:
+                club.updated_at,
+            };
+          },
+        ),
       );
 
     return {
       success: true,
-      clubs: clubsWithDetails,
+      clubs:
+        clubsWithDetails,
     };
   }
 
@@ -443,10 +571,13 @@ export class ClubsService {
   // MY CLUBS
   // =========================================================
 
-  async getMyClubs(userId: string) {
+  async getMyClubs(
+    userId: string,
+  ) {
     const {
       data: memberships,
-      error: membershipError,
+      error:
+        membershipError,
     } = await supabase
       .from('club_members')
       .select(`
@@ -464,10 +595,16 @@ export class ClubsService {
           updated_at
         )
       `)
-      .eq('user_id', userId)
-      .order('joined_at', {
-        ascending: false,
-      });
+      .eq(
+        'user_id',
+        userId,
+      )
+      .order(
+        'joined_at',
+        {
+          ascending: false,
+        },
+      );
 
     if (membershipError) {
       throw new BadRequestException(
@@ -475,59 +612,72 @@ export class ClubsService {
       );
     }
 
-    const clubs = await Promise.all(
-      (memberships ?? []).map(
-        async (membership: any) => {
-          const club =
-            membership.clubs;
+    const clubs =
+      await Promise.all(
+        (memberships ?? []).map(
+          async (
+            membership: any,
+          ) => {
+            const club =
+              membership.clubs;
 
-          if (!club) {
-            return null;
-          }
+            if (!club) {
+              return null;
+            }
 
-          const {
-            count: memberCount,
-            error: countError,
-          } = await supabase
-            .from('club_members')
-            .select('id', {
-              count: 'exact',
-              head: true,
-            })
-            .eq('club_id', club.id);
+            const {
+              count: memberCount,
+              error: countError,
+            } = await supabase
+              .from(
+                'club_members',
+              )
+              .select('id', {
+                count: 'exact',
+                head: true,
+              })
+              .eq(
+                'club_id',
+                club.id,
+              );
 
-          if (countError) {
-            throw new BadRequestException(
-              countError.message,
-            );
-          }
+            if (countError) {
+              throw new BadRequestException(
+                countError.message,
+              );
+            }
 
-          return {
-            id: club.id,
-            name: club.name,
-            category: club.category,
-            description: club.description,
-            coverImageUrl:
-              club.cover_image_url,
-            memberCount:
-              memberCount ?? 0,
-            isJoined: true,
-            role: membership.role,
-            joinedAt:
-              membership.joined_at,
-            createdBy: club.created_by,
-            createdAt:
-              club.created_at,
-            updatedAt:
-              club.updated_at,
-          };
-        },
-      ),
-    );
+            return {
+              id: club.id,
+              name: club.name,
+              category:
+                club.category,
+              description:
+                club.description,
+              coverImageUrl:
+                club.cover_image_url,
+              memberCount:
+                memberCount ?? 0,
+              isJoined: true,
+              role:
+                membership.role,
+              joinedAt:
+                membership.joined_at,
+              createdBy:
+                club.created_by,
+              createdAt:
+                club.created_at,
+              updatedAt:
+                club.updated_at,
+            };
+          },
+        ),
+      );
 
     return {
       success: true,
-      clubs: clubs.filter(Boolean),
+      clubs:
+        clubs.filter(Boolean),
     };
   }
 
@@ -569,7 +719,10 @@ export class ClubsService {
         count: 'exact',
         head: true,
       })
-      .eq('club_id', clubId);
+      .eq(
+        'club_id',
+        clubId,
+      );
 
     if (countError) {
       throw new BadRequestException(
@@ -579,12 +732,21 @@ export class ClubsService {
 
     const {
       data: membership,
-      error: membershipError,
+      error:
+        membershipError,
     } = await supabase
       .from('club_members')
-      .select('id, role')
-      .eq('club_id', clubId)
-      .eq('user_id', userId)
+      .select(
+        'id, role',
+      )
+      .eq(
+        'club_id',
+        clubId,
+      )
+      .eq(
+        'user_id',
+        userId,
+      )
       .maybeSingle();
 
     if (membershipError) {
@@ -598,17 +760,25 @@ export class ClubsService {
       club: {
         id: club.id,
         name: club.name,
-        category: club.category,
-        description: club.description,
+        category:
+          club.category,
+        description:
+          club.description,
         coverImageUrl:
           club.cover_image_url,
         memberCount:
           memberCount ?? 0,
-        isJoined: !!membership,
-        role: membership?.role ?? null,
-        createdBy: club.created_by,
-        createdAt: club.created_at,
-        updatedAt: club.updated_at,
+        isJoined:
+          !!membership,
+        role:
+          membership?.role ??
+          null,
+        createdBy:
+          club.created_by,
+        createdAt:
+          club.created_at,
+        updatedAt:
+          club.updated_at,
       },
     };
   }
@@ -617,7 +787,9 @@ export class ClubsService {
   // GET CLUB MEMBERS
   // =========================================================
 
-  async getMembers(clubId: string) {
+  async getMembers(
+    clubId: string,
+  ) {
     // Check club exists
     const {
       data: club,
@@ -659,10 +831,16 @@ export class ClubsService {
           city
         )
       `)
-      .eq('club_id', clubId)
-      .order('joined_at', {
-        ascending: true,
-      });
+      .eq(
+        'club_id',
+        clubId,
+      )
+      .order(
+        'joined_at',
+        {
+          ascending: true,
+        },
+      );
 
     if (membersError) {
       throw new BadRequestException(
@@ -673,16 +851,20 @@ export class ClubsService {
     const safeMembers =
       (members ?? []).map(
         (member: any) => ({
-          id: member.users?.id,
+          id:
+            member.users?.id,
           username:
             member.users?.username,
           displayName:
             member.users?.display_name,
-          bio: member.users?.bio,
+          bio:
+            member.users?.bio,
           avatarUrl:
             member.users?.avatar_url,
-          city: member.users?.city,
-          role: member.role,
+          city:
+            member.users?.city,
+          role:
+            member.role,
           joinedAt:
             member.joined_at,
         }),
@@ -692,7 +874,8 @@ export class ClubsService {
       success: true,
       memberCount:
         safeMembers.length,
-      members: safeMembers,
+      members:
+        safeMembers,
     };
   }
 
@@ -715,15 +898,20 @@ export class ClubsService {
     const updateData: any = {};
 
     if (dto.name !== undefined) {
-      updateData.name = dto.name;
+      updateData.name =
+        dto.name;
     }
 
-    if (dto.category !== undefined) {
+    if (
+      dto.category !== undefined
+    ) {
       updateData.category =
         dto.category;
     }
 
-    if (dto.description !== undefined) {
+    if (
+      dto.description !== undefined
+    ) {
       updateData.description =
         dto.description;
     }
@@ -736,7 +924,8 @@ export class ClubsService {
     }
 
     if (
-      Object.keys(updateData).length === 0
+      Object.keys(updateData)
+        .length === 0
     ) {
       throw new BadRequestException(
         'No club fields provided for update.',
@@ -749,7 +938,10 @@ export class ClubsService {
     } = await supabase
       .from('clubs')
       .update(updateData)
-      .eq('id', clubId)
+      .eq(
+        'id',
+        clubId,
+      )
       .select()
       .single();
 
@@ -766,13 +958,18 @@ export class ClubsService {
       club: {
         id: club.id,
         name: club.name,
-        category: club.category,
-        description: club.description,
+        category:
+          club.category,
+        description:
+          club.description,
         coverImageUrl:
           club.cover_image_url,
-        createdBy: club.created_by,
-        createdAt: club.created_at,
-        updatedAt: club.updated_at,
+        createdBy:
+          club.created_by,
+        createdAt:
+          club.created_at,
+        updatedAt:
+          club.updated_at,
       },
     };
   }
@@ -798,7 +995,10 @@ export class ClubsService {
     } = await supabase
       .from('club_members')
       .delete()
-      .eq('club_id', clubId);
+      .eq(
+        'club_id',
+        clubId,
+      );
 
     if (membersError) {
       throw new BadRequestException(
@@ -812,7 +1012,10 @@ export class ClubsService {
     } = await supabase
       .from('clubs')
       .delete()
-      .eq('id', clubId);
+      .eq(
+        'id',
+        clubId,
+      );
 
     if (deleteError) {
       throw new BadRequestException(
@@ -849,9 +1052,17 @@ export class ClubsService {
       error: targetError,
     } = await supabase
       .from('club_members')
-      .select('id, role')
-      .eq('club_id', clubId)
-      .eq('user_id', targetUserId)
+      .select(
+        'id, role',
+      )
+      .eq(
+        'club_id',
+        clubId,
+      )
+      .eq(
+        'user_id',
+        targetUserId,
+      )
       .maybeSingle();
 
     if (targetError) {
@@ -866,8 +1077,10 @@ export class ClubsService {
       );
     }
 
-    // Nobody can remove an admin using this endpoint
-    if (targetMember.role === 'admin') {
+    // Nobody can remove an admin
+    if (
+      targetMember.role === 'admin'
+    ) {
       throw new ForbiddenException(
         'Club admins cannot be removed as members.',
       );
@@ -877,7 +1090,8 @@ export class ClubsService {
     // but cannot remove another volunteer.
     if (
       actorRole === 'volunteer' &&
-      targetMember.role === 'volunteer'
+      targetMember.role ===
+        'volunteer'
     ) {
       throw new ForbiddenException(
         'Volunteers cannot remove other volunteers.',
@@ -889,14 +1103,35 @@ export class ClubsService {
     } = await supabase
       .from('club_members')
       .delete()
-      .eq('club_id', clubId)
-      .eq('user_id', targetUserId);
+      .eq(
+        'club_id',
+        clubId,
+      )
+      .eq(
+        'user_id',
+        targetUserId,
+      );
 
     if (deleteError) {
       throw new BadRequestException(
         deleteError.message,
       );
     }
+
+    // =======================================================
+    // CLUB REMOVED NOTIFICATION
+    // =======================================================
+
+    await this.notificationsService
+      .tryCreateNotification(
+        targetUserId,
+        'CLUB_REMOVED',
+        'Removed from club',
+        'You were removed from a club.',
+        userId,
+        clubId,
+        'CLUB',
+      );
 
     return {
       success: true,
@@ -928,7 +1163,11 @@ export class ClubsService {
       'member',
     ];
 
-    if (!allowedRoles.includes(role)) {
+    if (
+      !allowedRoles.includes(
+        role,
+      )
+    ) {
       throw new BadRequestException(
         'Invalid role. Allowed roles: admin, volunteer, member.',
       );
@@ -939,9 +1178,17 @@ export class ClubsService {
       error: targetError,
     } = await supabase
       .from('club_members')
-      .select('id, role')
-      .eq('club_id', clubId)
-      .eq('user_id', targetUserId)
+      .select(
+        'id, role',
+      )
+      .eq(
+        'club_id',
+        clubId,
+      )
+      .eq(
+        'user_id',
+        targetUserId,
+      )
       .maybeSingle();
 
     if (targetError) {
@@ -956,7 +1203,10 @@ export class ClubsService {
       );
     }
 
-    // Prevent the only admin from demoting themselves
+    // -------------------------------------------------------
+    // PREVENT ONLY ADMIN FROM DEMOTING THEMSELVES
+    // -------------------------------------------------------
+
     if (
       targetUserId === userId &&
       targetMember.role === 'admin' &&
@@ -971,8 +1221,14 @@ export class ClubsService {
           count: 'exact',
           head: true,
         })
-        .eq('club_id', clubId)
-        .eq('role', 'admin');
+        .eq(
+          'club_id',
+          clubId,
+        )
+        .eq(
+          'role',
+          'admin',
+        );
 
       if (adminError) {
         throw new BadRequestException(
@@ -980,12 +1236,18 @@ export class ClubsService {
         );
       }
 
-      if ((adminCount ?? 0) <= 1) {
+      if (
+        (adminCount ?? 0) <= 1
+      ) {
         throw new BadRequestException(
           'You are the only admin. Promote another member to admin first.',
         );
       }
     }
+
+    // -------------------------------------------------------
+    // UPDATE ROLE
+    // -------------------------------------------------------
 
     const {
       data: updatedMember,
@@ -995,9 +1257,17 @@ export class ClubsService {
       .update({
         role,
       })
-      .eq('club_id', clubId)
-      .eq('user_id', targetUserId)
-      .select('id, user_id, role, joined_at')
+      .eq(
+        'club_id',
+        clubId,
+      )
+      .eq(
+        'user_id',
+        targetUserId,
+      )
+      .select(
+        'id, user_id, role, joined_at',
+      )
       .single();
 
     if (updateError) {
@@ -1006,14 +1276,32 @@ export class ClubsService {
       );
     }
 
+    // =======================================================
+    // CLUB ROLE CHANGED NOTIFICATION
+    // =======================================================
+
+    await this.notificationsService
+      .tryCreateNotification(
+        targetUserId,
+        'CLUB_ROLE_CHANGED',
+        'Club role changed',
+        `Your club role was changed to ${role}.`,
+        userId,
+        clubId,
+        'CLUB',
+      );
+
     return {
       success: true,
       message:
         'Member role updated successfully.',
       member: {
-        id: updatedMember.id,
-        userId: updatedMember.user_id,
-        role: updatedMember.role,
+        id:
+          updatedMember.id,
+        userId:
+          updatedMember.user_id,
+        role:
+          updatedMember.role,
         joinedAt:
           updatedMember.joined_at,
       },
@@ -1033,9 +1321,17 @@ export class ClubsService {
       error,
     } = await supabase
       .from('club_members')
-      .select('id, role')
-      .eq('club_id', clubId)
-      .eq('user_id', userId)
+      .select(
+        'id, role',
+      )
+      .eq(
+        'club_id',
+        clubId,
+      )
+      .eq(
+        'user_id',
+        userId,
+      )
       .maybeSingle();
 
     if (error) {
@@ -1050,7 +1346,10 @@ export class ClubsService {
       );
     }
 
-    if (membership.role !== 'admin') {
+    if (
+      membership.role !==
+      'admin'
+    ) {
       throw new ForbiddenException(
         'Only the club admin can perform this action.',
       );
@@ -1072,9 +1371,17 @@ export class ClubsService {
       error,
     } = await supabase
       .from('club_members')
-      .select('id, role')
-      .eq('club_id', clubId)
-      .eq('user_id', userId)
+      .select(
+        'id, role',
+      )
+      .eq(
+        'club_id',
+        clubId,
+      )
+      .eq(
+        'user_id',
+        userId,
+      )
       .maybeSingle();
 
     if (error) {
@@ -1091,7 +1398,8 @@ export class ClubsService {
 
     if (
       membership.role !== 'admin' &&
-      membership.role !== 'volunteer'
+      membership.role !==
+        'volunteer'
     ) {
       throw new ForbiddenException(
         'Only the club admin or a club volunteer can perform this action.',

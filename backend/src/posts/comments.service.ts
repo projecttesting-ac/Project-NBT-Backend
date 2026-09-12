@@ -5,9 +5,14 @@ import {
 
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { supabase } from '../config/supabase';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class CommentsService {
+
+  constructor(
+    private readonly notificationsService: NotificationsService,
+  ) {}
 
   // =========================================================
   // CREATE COMMENT / REPLY
@@ -25,13 +30,19 @@ export class CommentsService {
       );
     }
 
-    // Check whether the post exists
+    const trimmedContent =
+      content.trim();
+
+    // -------------------------------------------------------
+    // CHECK POST
+    // -------------------------------------------------------
+
     const {
       data: post,
       error: postError,
     } = await supabase
       .from('posts')
-      .select('id')
+      .select('id, user_id')
       .eq('id', postId)
       .eq('is_deleted', false)
       .maybeSingle();
@@ -48,18 +59,37 @@ export class CommentsService {
       );
     }
 
-    // If this is a reply, check whether
-    // the parent comment exists
+    // -------------------------------------------------------
+    // CHECK PARENT COMMENT IF THIS IS A REPLY
+    // -------------------------------------------------------
+
+    let parentComment: {
+      id: string;
+      post_id: string;
+      user_id: string;
+    } | null = null;
+
     if (parentCommentId) {
       const {
-        data: parentComment,
+        data,
         error: parentCommentError,
       } = await supabase
         .from('post_comments')
-        .select('id, post_id')
-        .eq('id', parentCommentId)
-        .eq('post_id', postId)
-        .eq('is_deleted', false)
+        .select(
+          'id, post_id, user_id',
+        )
+        .eq(
+          'id',
+          parentCommentId,
+        )
+        .eq(
+          'post_id',
+          postId,
+        )
+        .eq(
+          'is_deleted',
+          false,
+        )
         .maybeSingle();
 
       if (parentCommentError) {
@@ -68,14 +98,19 @@ export class CommentsService {
         );
       }
 
-      if (!parentComment) {
+      if (!data) {
         throw new BadRequestException(
           'Parent comment not found.',
         );
       }
+
+      parentComment = data;
     }
 
-    // Create comment or reply
+    // -------------------------------------------------------
+    // CREATE COMMENT / REPLY
+    // -------------------------------------------------------
+
     const {
       data,
       error,
@@ -84,7 +119,7 @@ export class CommentsService {
       .insert({
         post_id: postId,
         user_id: userId,
-        content: content.trim(),
+        content: trimmedContent,
         parent_comment_id:
           parentCommentId ?? null,
       })
@@ -96,6 +131,79 @@ export class CommentsService {
         error.message,
       );
     }
+
+    // =======================================================
+    // COMMENT / REPLY NOTIFICATION
+    // =======================================================
+
+    if (parentComment) {
+      // -----------------------------------------------------
+      // REPLY NOTIFICATION
+      // -----------------------------------------------------
+      //
+      // User B replies to User A's comment.
+      // User A receives COMMENT_REPLY.
+      //
+
+      await this.notificationsService
+        .tryCreateNotification(
+          parentComment.user_id,
+          'COMMENT_REPLY',
+          'New reply',
+          'Someone replied to your comment.',
+          userId,
+          data.id,
+          'COMMENT',
+        );
+    } else {
+      // -----------------------------------------------------
+      // COMMENT NOTIFICATION
+      // -----------------------------------------------------
+      //
+      // User B comments on User A's post.
+      // User A receives POST_COMMENT.
+      //
+
+      await this.notificationsService
+        .tryCreateNotification(
+          post.user_id,
+          'POST_COMMENT',
+          'New comment',
+          'Someone commented on your post.',
+          userId,
+          data.id,
+          'COMMENT',
+        );
+    }
+
+    // =======================================================
+    // @MENTION NOTIFICATION
+    // =======================================================
+    //
+    // Example:
+    //
+    // "@john what do you think?"
+    //
+    // Creates:
+    //
+    // MENTION_COMMENT
+    //
+    // Invalid usernames are ignored.
+    // Duplicate mentions are ignored.
+    // Self mentions are ignored.
+    //
+    // Notification failure does not break
+    // comment/reply creation.
+    //
+    // =======================================================
+
+    await this.notificationsService
+      .notifyMentionedUsers(
+        trimmedContent,
+        userId,
+        data.id,
+        'COMMENT',
+      );
 
     return {
       success: true,
@@ -115,15 +223,24 @@ export class CommentsService {
     userId: string,
     pagination: PaginationDto,
   ) {
-    // Check whether the post exists
+    // -------------------------------------------------------
+    // CHECK WHETHER POST EXISTS
+    // -------------------------------------------------------
+
     const {
       data: post,
       error: postError,
     } = await supabase
       .from('posts')
       .select('id')
-      .eq('id', postId)
-      .eq('is_deleted', false)
+      .eq(
+        'id',
+        postId,
+      )
+      .eq(
+        'is_deleted',
+        false,
+      )
       .maybeSingle();
 
     if (postError) {
@@ -138,14 +255,26 @@ export class CommentsService {
       );
     }
 
-    // Pagination
-    const page = pagination.page;
-    const limit = pagination.limit;
+    // -------------------------------------------------------
+    // PAGINATION
+    // -------------------------------------------------------
 
-    const from = (page - 1) * limit;
-    const to = from + limit - 1;
+    const page =
+      pagination.page;
 
-    // Get comments for this post
+    const limit =
+      pagination.limit;
+
+    const from =
+      (page - 1) * limit;
+
+    const to =
+      from + limit - 1;
+
+    // -------------------------------------------------------
+    // GET COMMENTS
+    // -------------------------------------------------------
+
     const {
       data: comments,
       error,
@@ -168,12 +297,24 @@ export class CommentsService {
           count: 'exact',
         },
       )
-      .eq('post_id', postId)
-      .eq('is_deleted', false)
-      .order('created_at', {
-        ascending: true,
-      })
-      .range(from, to);
+      .eq(
+        'post_id',
+        postId,
+      )
+      .eq(
+        'is_deleted',
+        false,
+      )
+      .order(
+        'created_at',
+        {
+          ascending: true,
+        },
+      )
+      .range(
+        from,
+        to,
+      );
 
     if (error) {
       throw new BadRequestException(
@@ -181,28 +322,33 @@ export class CommentsService {
       );
     }
 
-    const totalCount = total ?? 0;
+    const totalCount =
+      total ?? 0;
 
     const totalPages =
       totalCount > 0
         ? Math.ceil(
-            totalCount / limit,
+            totalCount /
+              limit,
           )
         : 0;
 
     return {
       success: true,
 
-      data: comments ?? [],
+      data:
+        comments ?? [],
 
       pagination: {
         page,
         limit,
-        total: totalCount,
+        total:
+          totalCount,
         totalPages,
 
         hasNextPage:
-          page < totalPages,
+          page <
+          totalPages,
 
         hasPreviousPage:
           page > 1,
@@ -219,18 +365,34 @@ export class CommentsService {
     postId: string,
     commentId: string,
   ) {
-    // Check that the comment exists
-    // and belongs to the current user
+    // -------------------------------------------------------
+    // CHECK COMMENT OWNERSHIP
+    // -------------------------------------------------------
+
     const {
       data: comment,
       error: commentError,
     } = await supabase
       .from('post_comments')
-      .select('id, parent_comment_id')
-      .eq('id', commentId)
-      .eq('post_id', postId)
-      .eq('user_id', userId)
-      .eq('is_deleted', false)
+      .select(
+        'id, parent_comment_id',
+      )
+      .eq(
+        'id',
+        commentId,
+      )
+      .eq(
+        'post_id',
+        postId,
+      )
+      .eq(
+        'user_id',
+        userId,
+      )
+      .eq(
+        'is_deleted',
+        false,
+      )
       .maybeSingle();
 
     if (commentError) {
@@ -245,22 +407,39 @@ export class CommentsService {
       );
     }
 
-    // Find the selected comment
-    // and every reply below it
-    const idsToDelete: string[] = [commentId];
+    // -------------------------------------------------------
+    // FIND COMMENT + ALL REPLIES
+    // -------------------------------------------------------
 
-    let currentIds: string[] = [commentId];
+    const idsToDelete: string[] = [
+      commentId,
+    ];
 
-    while (currentIds.length > 0) {
+    let currentIds: string[] = [
+      commentId,
+    ];
+
+    while (
+      currentIds.length > 0
+    ) {
       const {
         data: replies,
         error: repliesError,
       } = await supabase
         .from('post_comments')
         .select('id')
-        .eq('post_id', postId)
-        .in('parent_comment_id', currentIds)
-        .eq('is_deleted', false);
+        .eq(
+          'post_id',
+          postId,
+        )
+        .in(
+          'parent_comment_id',
+          currentIds,
+        )
+        .eq(
+          'is_deleted',
+          false,
+        );
 
       if (repliesError) {
         throw new BadRequestException(
@@ -268,21 +447,31 @@ export class CommentsService {
         );
       }
 
-      if (!replies || replies.length === 0) {
+      if (
+        !replies ||
+        replies.length === 0
+      ) {
         break;
       }
 
-      const nextIds = replies.map(
-        (reply) => reply.id,
+      const nextIds =
+        replies.map(
+          (reply) =>
+            reply.id,
+        );
+
+      idsToDelete.push(
+        ...nextIds,
       );
 
-      idsToDelete.push(...nextIds);
-
-      currentIds = nextIds;
+      currentIds =
+        nextIds;
     }
 
-    // Soft delete everything
-    // in the comment's reply tree
+    // -------------------------------------------------------
+    // SOFT DELETE COMMENT TREE
+    // -------------------------------------------------------
+
     const {
       data,
       error,
@@ -290,10 +479,17 @@ export class CommentsService {
       .from('post_comments')
       .update({
         is_deleted: true,
-        updated_at: new Date().toISOString(),
+        updated_at:
+          new Date().toISOString(),
       })
-      .in('id', idsToDelete)
-      .eq('post_id', postId)
+      .in(
+        'id',
+        idsToDelete,
+      )
+      .eq(
+        'post_id',
+        postId,
+      )
       .select();
 
     if (error) {
@@ -304,10 +500,14 @@ export class CommentsService {
 
     return {
       success: true,
-      message: 'Comment deleted successfully.',
-      data: data?.find(
-        (item) => item.id === commentId,
-      ) ?? null,
+      message:
+        'Comment deleted successfully.',
+      data:
+        data?.find(
+          (item) =>
+            item.id ===
+            commentId,
+        ) ?? null,
     };
   }
 
@@ -321,7 +521,10 @@ export class CommentsService {
     commentId: string,
     content: string,
   ) {
-    if (!content || !content.trim()) {
+    if (
+      !content ||
+      !content.trim()
+    ) {
       throw new BadRequestException(
         'Comment content cannot be empty.',
       );
@@ -333,14 +536,28 @@ export class CommentsService {
     } = await supabase
       .from('post_comments')
       .update({
-        content: content.trim(),
+        content:
+          content.trim(),
         is_edited: true,
-        updated_at: new Date().toISOString(),
+        updated_at:
+          new Date().toISOString(),
       })
-      .eq('id', commentId)
-      .eq('post_id', postId)
-      .eq('user_id', userId)
-      .eq('is_deleted', false)
+      .eq(
+        'id',
+        commentId,
+      )
+      .eq(
+        'post_id',
+        postId,
+      )
+      .eq(
+        'user_id',
+        userId,
+      )
+      .eq(
+        'is_deleted',
+        false,
+      )
       .select()
       .maybeSingle();
 
@@ -358,7 +575,8 @@ export class CommentsService {
 
     return {
       success: true,
-      message: 'Comment updated successfully.',
+      message:
+        'Comment updated successfully.',
       data,
     };
   }
