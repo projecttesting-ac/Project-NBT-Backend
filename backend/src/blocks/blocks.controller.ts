@@ -2,13 +2,14 @@ import {
   Controller,
   Delete,
   Get,
-  Param,
+  ParseUUIDPipe,
   Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
 
 import { BlocksService } from './blocks.service';
+
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { PaginationDto } from '../common/dto/pagination.dto';
@@ -22,13 +23,13 @@ export class BlocksController {
 
   // =========================================================
   // BLOCK USER
-  // POST /api/blocks/:userId
+  // POST /api/blocks?userId=USER_UUID
   // =========================================================
 
-  @Post(':userId')
+  @Post()
   blockUser(
     @CurrentUser() user: any,
-    @Param('userId') userId: string,
+    @Query('userId', new ParseUUIDPipe()) userId: string,
   ) {
     return this.blocksService.blockUser(
       user.id,
@@ -38,13 +39,13 @@ export class BlocksController {
 
   // =========================================================
   // UNBLOCK USER
-  // DELETE /api/blocks/:userId
+  // DELETE /api/blocks?userId=USER_UUID
   // =========================================================
 
-  @Delete(':userId')
+  @Delete()
   unblockUser(
     @CurrentUser() user: any,
-    @Param('userId') userId: string,
+    @Query('userId', new ParseUUIDPipe()) userId: string,
   ) {
     return this.blocksService.unblockUser(
       user.id,
@@ -70,13 +71,13 @@ export class BlocksController {
 
   // =========================================================
   // CHECK BLOCK STATUS
-  // GET /api/blocks/status/:userId
+  // GET /api/blocks/status?userId=USER_UUID
   // =========================================================
 
-  @Get('status/:userId')
+  @Get('status')
   getBlockStatus(
     @CurrentUser() user: any,
-    @Param('userId') userId: string,
+    @Query('userId', new ParseUUIDPipe()) userId: string,
   ) {
     return this.blocksService.getBlockStatus(
       user.id,

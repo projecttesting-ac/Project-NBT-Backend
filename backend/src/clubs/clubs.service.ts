@@ -14,10 +14,39 @@ import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class ClubsService {
-
   constructor(
     private readonly notificationsService: NotificationsService,
   ) {}
+
+  // =========================================================
+  // ROLE HIERARCHY
+  // =========================================================
+  //
+  // Higher number = higher authority
+  //
+  // president       = 5
+  // vice_president  = 4
+  // moderator       = 3
+  // volunteer       = 2
+  // member          = 1
+  //
+  // =========================================================
+
+  private readonly roleLevel: Record<string, number> = {
+    president: 5,
+    vice_president: 4,
+    moderator: 3,
+    volunteer: 2,
+    member: 1,
+  };
+
+  private readonly allowedRoles = [
+    'president',
+    'vice_president',
+    'moderator',
+    'volunteer',
+    'member',
+  ];
 
   // =========================================================
   // CREATE CLUB
@@ -49,7 +78,10 @@ export class ClubsService {
       );
     }
 
-    // Creator becomes the first ADMIN
+    // =======================================================
+    // CREATOR BECOMES PRESIDENT
+    // =======================================================
+
     const {
       error: memberError,
     } = await supabase
@@ -57,11 +89,11 @@ export class ClubsService {
       .insert({
         club_id: club.id,
         user_id: userId,
-        role: 'admin',
+        role: 'president',
       });
 
     if (memberError) {
-      // Roll back the club if member creation fails
+      // Roll back the club if membership creation fails
       await supabase
         .from('clubs')
         .delete()
@@ -83,9 +115,12 @@ export class ClubsService {
         description: club.description,
         coverImageUrl:
           club.cover_image_url,
-        createdBy: club.created_by,
-        createdAt: club.created_at,
-        updatedAt: club.updated_at,
+        createdBy:
+          club.created_by,
+        createdAt:
+          club.created_at,
+        updatedAt:
+          club.updated_at,
       },
     };
   }
@@ -137,7 +172,10 @@ export class ClubsService {
                 count: 'exact',
                 head: true,
               })
-              .eq('club_id', club.id);
+              .eq(
+                'club_id',
+                club.id,
+              );
 
             if (countError) {
               throw new BadRequestException(
@@ -151,9 +189,17 @@ export class ClubsService {
                 membershipError,
             } = await supabase
               .from('club_members')
-              .select('id, role')
-              .eq('club_id', club.id)
-              .eq('user_id', userId)
+              .select(
+                'id, role',
+              )
+              .eq(
+                'club_id',
+                club.id,
+              )
+              .eq(
+                'user_id',
+                userId,
+              )
               .maybeSingle();
 
             if (membershipError) {
@@ -165,7 +211,8 @@ export class ClubsService {
             return {
               id: club.id,
               name: club.name,
-              category: club.category,
+              category:
+                club.category,
               description:
                 club.description,
               coverImageUrl:
@@ -197,7 +244,8 @@ export class ClubsService {
 
     return {
       success: true,
-      clubs: clubsWithDetails,
+      clubs:
+        clubsWithDetails,
       pagination: {
         page,
         limit,
@@ -254,8 +302,14 @@ export class ClubsService {
     } = await supabase
       .from('club_members')
       .select('id, role')
-      .eq('club_id', clubId)
-      .eq('user_id', userId)
+      .eq(
+        'club_id',
+        clubId,
+      )
+      .eq(
+        'user_id',
+        userId,
+      )
       .maybeSingle();
 
     if (memberError) {
@@ -276,6 +330,10 @@ export class ClubsService {
 
     // -------------------------------------------------------
     // CREATE MEMBERSHIP
+    // -------------------------------------------------------
+    //
+    // Every newly joining user starts as an ordinary member.
+    //
     // -------------------------------------------------------
 
     const {
@@ -298,43 +356,52 @@ export class ClubsService {
     // CLUB JOIN NOTIFICATION
     // =======================================================
     //
-    // Notify every admin of the club.
+    // Notify President(s) of the club.
     //
-    // The joining user will never receive their own
-    // notification because NotificationsService protects
-    // against actorId === userId.
+    // The actor cannot receive their own notification.
     //
+    // =======================================================
 
     const {
-      data: admins,
-      error: adminsError,
+      data: presidents,
+      error: presidentsError,
     } = await supabase
       .from('club_members')
       .select('user_id')
-      .eq('club_id', clubId)
-      .eq('role', 'admin');
+      .eq(
+        'club_id',
+        clubId,
+      )
+      .eq(
+        'role',
+        'president',
+      );
 
-    if (!adminsError && admins) {
+    if (
+      !presidentsError &&
+      presidents
+    ) {
       await Promise.all(
-        admins.map((admin) =>
-          this.notificationsService
-            .tryCreateNotification(
-              admin.user_id,
-              'CLUB_JOIN',
-              'New club member',
-              'Someone joined your club.',
-              userId,
-              clubId,
-              'CLUB',
-            ),
+        presidents.map(
+          (president) =>
+            this.notificationsService
+              .tryCreateNotification(
+                president.user_id,
+                'CLUB_JOIN',
+                'New club member',
+                'Someone joined your club.',
+                userId,
+                clubId,
+                'CLUB',
+              ),
         ),
       );
-    } else if (adminsError) {
-      // Do not fail the join if notification
-      // recipient lookup fails.
+    } else if (
+      presidentsError
+    ) {
       console.error(
-        'Unable to find club admins for notification:',
-        adminsError.message,
+        'Unable to find club presidents for notification:',
+        presidentsError.message,
       );
     }
 
@@ -359,9 +426,17 @@ export class ClubsService {
       error: memberError,
     } = await supabase
       .from('club_members')
-      .select('id, role')
-      .eq('club_id', clubId)
-      .eq('user_id', userId)
+      .select(
+        'id, role',
+      )
+      .eq(
+        'club_id',
+        clubId,
+      )
+      .eq(
+        'user_id',
+        userId,
+      )
       .maybeSingle();
 
     if (memberError) {
@@ -376,32 +451,43 @@ export class ClubsService {
       );
     }
 
-    // If admin is leaving,
-    // make sure another admin exists
-    if (membership.role === 'admin') {
+    // =======================================================
+    // PRESIDENT CANNOT LEAVE IF THEY ARE THE ONLY PRESIDENT
+    // =======================================================
+
+    if (
+      membership.role ===
+      'president'
+    ) {
       const {
-        count: adminCount,
-        error: adminError,
+        count: presidentCount,
+        error: presidentError,
       } = await supabase
         .from('club_members')
         .select('id', {
           count: 'exact',
           head: true,
         })
-        .eq('club_id', clubId)
-        .eq('role', 'admin');
+        .eq(
+          'club_id',
+          clubId,
+        )
+        .eq(
+          'role',
+          'president',
+        );
 
-      if (adminError) {
+      if (presidentError) {
         throw new BadRequestException(
-          adminError.message,
+          presidentError.message,
         );
       }
 
       if (
-        (adminCount ?? 0) <= 1
+        (presidentCount ?? 0) <= 1
       ) {
         throw new BadRequestException(
-          'You are the only admin. Promote another member to admin before leaving the club.',
+          'You are the only president. Transfer the presidency before leaving the club.',
         );
       }
     }
@@ -411,8 +497,14 @@ export class ClubsService {
     } = await supabase
       .from('club_members')
       .delete()
-      .eq('club_id', clubId)
-      .eq('user_id', userId);
+      .eq(
+        'club_id',
+        clubId,
+      )
+      .eq(
+        'user_id',
+        userId,
+      );
 
     if (deleteError) {
       throw new BadRequestException(
@@ -443,14 +535,19 @@ export class ClubsService {
       .eq('id', userId)
       .single();
 
-    if (userError || !user) {
+    if (
+      userError ||
+      !user
+    ) {
       throw new BadRequestException(
         'User not found.',
       );
     }
 
     const interests =
-      Array.isArray(user.interest)
+      Array.isArray(
+        user.interest,
+      )
         ? user.interest
         : [];
 
@@ -460,9 +557,12 @@ export class ClubsService {
     } = await supabase
       .from('clubs')
       .select('*')
-      .order('created_at', {
-        ascending: false,
-      });
+      .order(
+        'created_at',
+        {
+          ascending: false,
+        },
+      );
 
     if (clubsError) {
       throw new BadRequestException(
@@ -474,7 +574,9 @@ export class ClubsService {
       (clubs ?? []).filter(
         (club) =>
           interests.some(
-            (interest: string) =>
+            (
+              interest: string,
+            ) =>
               interest
                 .trim()
                 .toLowerCase() ===
@@ -492,7 +594,9 @@ export class ClubsService {
               count: memberCount,
               error: countError,
             } = await supabase
-              .from('club_members')
+              .from(
+                'club_members',
+              )
               .select('id', {
                 count: 'exact',
                 head: true,
@@ -527,7 +631,9 @@ export class ClubsService {
               )
               .maybeSingle();
 
-            if (membershipError) {
+            if (
+              membershipError
+            ) {
               throw new BadRequestException(
                 membershipError.message,
               );
@@ -695,7 +801,10 @@ export class ClubsService {
     } = await supabase
       .from('clubs')
       .select('*')
-      .eq('id', clubId)
+      .eq(
+        'id',
+        clubId,
+      )
       .maybeSingle();
 
     if (clubError) {
@@ -790,14 +899,20 @@ export class ClubsService {
   async getMembers(
     clubId: string,
   ) {
-    // Check club exists
+    // -------------------------------------------------------
+    // CHECK CLUB EXISTS
+    // -------------------------------------------------------
+
     const {
       data: club,
       error: clubError,
     } = await supabase
       .from('clubs')
       .select('id')
-      .eq('id', clubId)
+      .eq(
+        'id',
+        clubId,
+      )
       .maybeSingle();
 
     if (clubError) {
@@ -811,6 +926,10 @@ export class ClubsService {
         'Club not found.',
       );
     }
+
+    // -------------------------------------------------------
+    // GET MEMBERS
+    // -------------------------------------------------------
 
     const {
       data: members,
@@ -881,8 +1000,7 @@ export class ClubsService {
 
   // =========================================================
   // UPDATE CLUB
-  // ADMIN ONLY
-  // PATCH /api/clubs/:clubId
+  // PRESIDENT ONLY
   // =========================================================
 
   async updateClub(
@@ -890,14 +1008,16 @@ export class ClubsService {
     clubId: string,
     dto: UpdateClubDto,
   ) {
-    await this.requireAdmin(
+    await this.requirePresident(
       userId,
       clubId,
     );
 
     const updateData: any = {};
 
-    if (dto.name !== undefined) {
+    if (
+      dto.name !== undefined
+    ) {
       updateData.name =
         dto.name;
     }
@@ -910,14 +1030,16 @@ export class ClubsService {
     }
 
     if (
-      dto.description !== undefined
+      dto.description !==
+      undefined
     ) {
       updateData.description =
         dto.description;
     }
 
     if (
-      dto.coverImageUrl !== undefined
+      dto.coverImageUrl !==
+      undefined
     ) {
       updateData.cover_image_url =
         dto.coverImageUrl;
@@ -937,7 +1059,9 @@ export class ClubsService {
       error: updateError,
     } = await supabase
       .from('clubs')
-      .update(updateData)
+      .update(
+        updateData,
+      )
       .eq(
         'id',
         clubId,
@@ -976,20 +1100,22 @@ export class ClubsService {
 
   // =========================================================
   // DELETE CLUB
-  // ADMIN ONLY
-  // DELETE /api/clubs/:clubId
+  // PRESIDENT ONLY
   // =========================================================
 
   async deleteClub(
     userId: string,
     clubId: string,
   ) {
-    await this.requireAdmin(
+    await this.requirePresident(
       userId,
       clubId,
     );
 
-    // Delete memberships first
+    // -------------------------------------------------------
+    // DELETE MEMBERSHIPS FIRST
+    // -------------------------------------------------------
+
     const {
       error: membersError,
     } = await supabase
@@ -1006,7 +1132,10 @@ export class ClubsService {
       );
     }
 
-    // Delete club
+    // -------------------------------------------------------
+    // DELETE CLUB
+    // -------------------------------------------------------
+
     const {
       error: deleteError,
     } = await supabase
@@ -1032,8 +1161,7 @@ export class ClubsService {
 
   // =========================================================
   // REMOVE MEMBER
-  // ADMIN OR VOLUNTEER
-  // DELETE /api/clubs/:clubId/members/:userId
+  // PRESIDENT / VP / MODERATOR
   // =========================================================
 
   async removeMember(
@@ -1042,7 +1170,7 @@ export class ClubsService {
     targetUserId: string,
   ) {
     const actorRole =
-      await this.requireAdminOrVolunteer(
+      await this.requireMemberManagementPermission(
         userId,
         clubId,
       );
@@ -1077,24 +1205,46 @@ export class ClubsService {
       );
     }
 
-    // Nobody can remove an admin
+    // -------------------------------------------------------
+    // CANNOT REMOVE PRESIDENT
+    // -------------------------------------------------------
+
     if (
-      targetMember.role === 'admin'
+      targetMember.role ===
+      'president'
     ) {
       throw new ForbiddenException(
-        'Club admins cannot be removed as members.',
+        'The president cannot be removed from the club.',
       );
     }
 
-    // Volunteer can remove normal members,
-    // but cannot remove another volunteer.
+    const actorLevel =
+      this.roleLevel[
+        actorRole
+      ];
+
+    const targetLevel =
+      this.roleLevel[
+        targetMember.role
+      ];
+
+    // -------------------------------------------------------
+    // HIGHER ROLE ONLY
+    // -------------------------------------------------------
+    //
+    // Example:
+    // VP can remove moderator/volunteer/member.
+    // Moderator can remove volunteer/member.
+    // Volunteer cannot remove anyone.
+    //
+    // -------------------------------------------------------
+
     if (
-      actorRole === 'volunteer' &&
-      targetMember.role ===
-        'volunteer'
+      actorLevel <=
+      targetLevel
     ) {
       throw new ForbiddenException(
-        'Volunteers cannot remove other volunteers.',
+        'You can only remove members with a lower role than yours.',
       );
     }
 
@@ -1142,8 +1292,23 @@ export class ClubsService {
 
   // =========================================================
   // UPDATE MEMBER ROLE
-  // ADMIN ONLY
-  // PATCH /api/clubs/:clubId/members/:userId/role
+  // =========================================================
+  //
+  // PRESIDENT:
+  // Can manage every lower role.
+  //
+  // VICE PRESIDENT:
+  // Can manage moderator, volunteer and member.
+  //
+  // MODERATOR:
+  // Can manage volunteer and member.
+  //
+  // VOLUNTEER:
+  // Cannot manage roles.
+  //
+  // MEMBER:
+  // Cannot manage roles.
+  //
   // =========================================================
 
   async updateMemberRole(
@@ -1152,24 +1317,23 @@ export class ClubsService {
     targetUserId: string,
     role: string,
   ) {
-    await this.requireAdmin(
-      userId,
-      clubId,
-    );
+    const actorRole =
+      await this.requireRoleManagementPermission(
+        userId,
+        clubId,
+      );
 
-    const allowedRoles = [
-      'admin',
-      'volunteer',
-      'member',
-    ];
+    // -------------------------------------------------------
+    // VALIDATE ROLE
+    // -------------------------------------------------------
 
     if (
-      !allowedRoles.includes(
+      !this.allowedRoles.includes(
         role,
       )
     ) {
       throw new BadRequestException(
-        'Invalid role. Allowed roles: admin, volunteer, member.',
+        'Invalid role. Allowed roles: president, vice_president, moderator, volunteer, member.',
       );
     }
 
@@ -1203,51 +1367,224 @@ export class ClubsService {
       );
     }
 
-    // -------------------------------------------------------
-    // PREVENT ONLY ADMIN FROM DEMOTING THEMSELVES
-    // -------------------------------------------------------
+    const actorLevel =
+      this.roleLevel[
+        actorRole
+      ];
+
+    const targetCurrentLevel =
+      this.roleLevel[
+        targetMember.role
+      ];
+
+    const newRoleLevel =
+      this.roleLevel[
+        role
+      ];
+
+    // =======================================================
+    // PRESIDENT ROLE
+    // =======================================================
+    //
+    // Only the current president can transfer presidency.
+    //
+    // A president cannot simply demote themselves.
+    //
+    // When transferring presidency:
+    //
+    // current president -> vice_president
+    // target member     -> president
+    //
+    // =======================================================
 
     if (
-      targetUserId === userId &&
-      targetMember.role === 'admin' &&
-      role !== 'admin'
+      role === 'president'
     ) {
+      if (
+        actorRole !==
+        'president'
+      ) {
+        throw new ForbiddenException(
+          'Only the current president can appoint a new president.',
+        );
+      }
+
+      if (
+        targetUserId ===
+        userId
+      ) {
+        return {
+          success: true,
+          message:
+            'You are already the president.',
+          member: {
+            id:
+              targetMember.id,
+            userId:
+              targetUserId,
+            role:
+              targetMember.role,
+          },
+        };
+      }
+
+      // -----------------------------------------------------
+      // Promote target to president first.
+      // -----------------------------------------------------
+      //
+      // Then demote the old president.
+      //
+      // If demotion fails, attempt rollback.
+      //
+      // -----------------------------------------------------
+
       const {
-        count: adminCount,
-        error: adminError,
+        error: promoteError,
       } = await supabase
         .from('club_members')
-        .select('id', {
-          count: 'exact',
-          head: true,
+        .update({
+          role: 'president',
         })
         .eq(
           'club_id',
           clubId,
         )
         .eq(
-          'role',
-          'admin',
+          'user_id',
+          targetUserId,
         );
 
-      if (adminError) {
+      if (promoteError) {
         throw new BadRequestException(
-          adminError.message,
+          promoteError.message,
         );
       }
 
-      if (
-        (adminCount ?? 0) <= 1
-      ) {
+      const {
+        error: demoteError,
+      } = await supabase
+        .from('club_members')
+        .update({
+          role: 'vice_president',
+        })
+        .eq(
+          'club_id',
+          clubId,
+        )
+        .eq(
+          'user_id',
+          userId,
+        );
+
+      if (demoteError) {
+        // Attempt rollback
+        await supabase
+          .from('club_members')
+          .update({
+            role:
+              targetMember.role,
+          })
+          .eq(
+            'club_id',
+            clubId,
+          )
+          .eq(
+            'user_id',
+            targetUserId,
+          );
+
         throw new BadRequestException(
-          'You are the only admin. Promote another member to admin first.',
+          demoteError.message,
         );
       }
+
+      // =====================================================
+      // NOTIFICATION TO NEW PRESIDENT
+      // =====================================================
+
+      await this.notificationsService
+        .tryCreateNotification(
+          targetUserId,
+          'CLUB_ROLE_CHANGED',
+          'You are now the club president',
+          'You have been appointed as the president of the club.',
+          userId,
+          clubId,
+          'CLUB',
+        );
+
+      // =====================================================
+      // NOTIFICATION TO OLD PRESIDENT
+      // =====================================================
+
+      await this.notificationsService
+        .tryCreateNotification(
+          userId,
+          'CLUB_ROLE_CHANGED',
+          'Club role changed',
+          'You are now the vice president of the club.',
+          targetUserId,
+          clubId,
+          'CLUB',
+        );
+
+      return {
+        success: true,
+        message:
+          'Presidency transferred successfully.',
+        member: {
+          id:
+            targetMember.id,
+          userId:
+            targetUserId,
+          role:
+            'president',
+        },
+      };
     }
 
-    // -------------------------------------------------------
+    // =======================================================
+    // PREVENT TARGET PRESIDENT FROM BEING DEMOTED
+    // =======================================================
+
+    if (
+      targetMember.role ===
+      'president'
+    ) {
+      throw new ForbiddenException(
+        'The president can only transfer the presidency themselves.',
+      );
+    }
+
+    // =======================================================
+    // ACTOR MUST HAVE HIGHER AUTHORITY
+    // =======================================================
+
+    if (
+      actorLevel <=
+      targetCurrentLevel
+    ) {
+      throw new ForbiddenException(
+        'You can only manage members with a lower role than yours.',
+      );
+    }
+
+    // =======================================================
+    // ACTOR CANNOT ASSIGN A ROLE EQUAL TO OR HIGHER
+    // =======================================================
+
+    if (
+      newRoleLevel >=
+      actorLevel
+    ) {
+      throw new ForbiddenException(
+        'You cannot assign a role equal to or higher than your own role.',
+      );
+    }
+
+    // =======================================================
     // UPDATE ROLE
-    // -------------------------------------------------------
+    // =======================================================
 
     const {
       data: updatedMember,
@@ -1309,10 +1646,10 @@ export class ClubsService {
   }
 
   // =========================================================
-  // PRIVATE: REQUIRE ADMIN
+  // PRIVATE: REQUIRE PRESIDENT
   // =========================================================
 
-  private async requireAdmin(
+  private async requirePresident(
     userId: string,
     clubId: string,
   ) {
@@ -1348,10 +1685,10 @@ export class ClubsService {
 
     if (
       membership.role !==
-      'admin'
+      'president'
     ) {
       throw new ForbiddenException(
-        'Only the club admin can perform this action.',
+        'Only the club president can perform this action.',
       );
     }
 
@@ -1359,10 +1696,19 @@ export class ClubsService {
   }
 
   // =========================================================
-  // PRIVATE: REQUIRE ADMIN OR VOLUNTEER
+  // PRIVATE:
+  // REQUIRE MEMBER MANAGEMENT PERMISSION
+  // =========================================================
+  //
+  // President
+  // Vice President
+  // Moderator
+  //
+  // can remove lower-level members.
+  //
   // =========================================================
 
-  private async requireAdminOrVolunteer(
+  private async requireMemberManagementPermission(
     userId: string,
     clubId: string,
   ) {
@@ -1396,13 +1742,77 @@ export class ClubsService {
       );
     }
 
+    const allowedManagerRoles = [
+      'president',
+      'vice_president',
+      'moderator',
+    ];
+
     if (
-      membership.role !== 'admin' &&
-      membership.role !==
-        'volunteer'
+      !allowedManagerRoles.includes(
+        membership.role,
+      )
     ) {
       throw new ForbiddenException(
-        'Only the club admin or a club volunteer can perform this action.',
+        'Only the president, vice president, or moderator can manage club members.',
+      );
+    }
+
+    return membership.role;
+  }
+
+  // =========================================================
+  // PRIVATE:
+  // REQUIRE ROLE MANAGEMENT PERMISSION
+  // =========================================================
+
+  private async requireRoleManagementPermission(
+    userId: string,
+    clubId: string,
+  ) {
+    const {
+      data: membership,
+      error,
+    } = await supabase
+      .from('club_members')
+      .select(
+        'id, role',
+      )
+      .eq(
+        'club_id',
+        clubId,
+      )
+      .eq(
+        'user_id',
+        userId,
+      )
+      .maybeSingle();
+
+    if (error) {
+      throw new BadRequestException(
+        error.message,
+      );
+    }
+
+    if (!membership) {
+      throw new ForbiddenException(
+        'You are not a member of this club.',
+      );
+    }
+
+    const allowedManagerRoles = [
+      'president',
+      'vice_president',
+      'moderator',
+    ];
+
+    if (
+      !allowedManagerRoles.includes(
+        membership.role,
+      )
+    ) {
+      throw new ForbiddenException(
+        'Only the president, vice president, or moderator can change member roles.',
       );
     }
 
