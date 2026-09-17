@@ -1,16 +1,19 @@
 import {
+  Body,
   Controller,
   Delete,
   Get,
   Param,
-  Post,
   Patch,
-  Body,
+  Post,
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
+
 import { UpdatePostDto } from './dto/update-post.dto';
 import { PostsService } from './posts.service';
+
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { PaginationDto } from '../common/dto/pagination.dto';
@@ -23,9 +26,16 @@ export class PostsController {
 
   // =========================================================
   // CREATE POST
+  // 20 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 20,
+      ttl: 60 * 1000,
+    },
+  })
   @Post()
   createPost(
     @CurrentUser() user: any,
@@ -39,15 +49,15 @@ export class PostsController {
 
   // =========================================================
   // GET POSTS
+  // Global fallback: 100 requests / 1 minute
   // =========================================================
 
-    @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard)
   @Get()
   getPosts(
     @CurrentUser() user: any,
     @Query() pagination: PaginationDto,
   ) {
-
     return this.postsService.getPosts(
       pagination,
       user.id,
@@ -56,25 +66,33 @@ export class PostsController {
 
   // =========================================================
   // GET SINGLE POST
+  // Global fallback: 100 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
-@Get(':postId')
-getPostById(
-  @CurrentUser() user: any,
-  @Param('postId') postId: string,
-) {
-  return this.postsService.getPostById(
-    postId,
-    user.id,
-  );
-}
+  @Get(':postId')
+  getPostById(
+    @CurrentUser() user: any,
+    @Param('postId') postId: string,
+  ) {
+    return this.postsService.getPostById(
+      postId,
+      user.id,
+    );
+  }
 
   // =========================================================
   // VIEW POST
+  // 100 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 100,
+      ttl: 60 * 1000,
+    },
+  })
   @Post(':postId/view')
   viewPost(
     @CurrentUser() user: any,
@@ -88,6 +106,7 @@ getPostById(
 
   // =========================================================
   // UPDATE POST
+  // Global fallback: 100 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
@@ -106,6 +125,7 @@ getPostById(
 
   // =========================================================
   // DELETE POST
+  // Global fallback: 100 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
@@ -119,11 +139,19 @@ getPostById(
       postId,
     );
   }
-    // =========================================================
+
+  // =========================================================
   // LIKE POST
+  // 60 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 60,
+      ttl: 60 * 1000,
+    },
+  })
   @Post(':postId/like')
   likePost(
     @CurrentUser() user: any,
@@ -137,9 +165,16 @@ getPostById(
 
   // =========================================================
   // UNLIKE POST
+  // 60 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 60,
+      ttl: 60 * 1000,
+    },
+  })
   @Delete(':postId/like')
   unlikePost(
     @CurrentUser() user: any,
@@ -150,36 +185,50 @@ getPostById(
       postId,
     );
   }
+
   // =========================================================
-// SAVE POST
-// =========================================================
+  // SAVE POST
+  // 60 requests / 1 minute
+  // =========================================================
 
-@UseGuards(JwtAuthGuard)
-@Post(':postId/save')
-savePost(
-  @CurrentUser() user: any,
-  @Param('postId') postId: string,
-) {
-  return this.postsService.savePost(
-    user.id,
-    postId,
-  );
-}
+  @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 60,
+      ttl: 60 * 1000,
+    },
+  })
+  @Post(':postId/save')
+  savePost(
+    @CurrentUser() user: any,
+    @Param('postId') postId: string,
+  ) {
+    return this.postsService.savePost(
+      user.id,
+      postId,
+    );
+  }
 
+  // =========================================================
+  // UNSAVE POST
+  // 60 requests / 1 minute
+  // =========================================================
 
-// =========================================================
-// UNSAVE POST
-// =========================================================
-
-@UseGuards(JwtAuthGuard)
-@Delete(':postId/save')
-unsavePost(
-  @CurrentUser() user: any,
-  @Param('postId') postId: string,
-) {
-  return this.postsService.unsavePost(
-    user.id,
-    postId,
-  );
-}
+  @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 60,
+      ttl: 60 * 1000,
+    },
+  })
+  @Delete(':postId/save')
+  unsavePost(
+    @CurrentUser() user: any,
+    @Param('postId') postId: string,
+  ) {
+    return this.postsService.unsavePost(
+      user.id,
+      postId,
+    );
+  }
 }

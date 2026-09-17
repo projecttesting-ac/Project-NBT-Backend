@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 
 import { CommentsService } from './comments.service';
 
@@ -21,16 +22,22 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 
 @Controller('posts/:postId/comments')
 export class CommentsController {
-
   constructor(
     private readonly commentsService: CommentsService,
   ) {}
 
   // =========================================================
   // CREATE COMMENT / REPLY
+  // 30 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 30,
+      ttl: 60 * 1000,
+    },
+  })
   @Post()
   createComment(
     @CurrentUser() user: any,
@@ -47,6 +54,7 @@ export class CommentsController {
 
   // =========================================================
   // GET COMMENTS
+  // Global fallback: 100 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
@@ -65,9 +73,16 @@ export class CommentsController {
 
   // =========================================================
   // UPDATE COMMENT / REPLY
+  // 30 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 30,
+      ttl: 60 * 1000,
+    },
+  })
   @Patch(':commentId')
   updateComment(
     @CurrentUser() user: any,
@@ -85,9 +100,16 @@ export class CommentsController {
 
   // =========================================================
   // DELETE COMMENT / REPLY
+  // 30 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 30,
+      ttl: 60 * 1000,
+    },
+  })
   @Delete(':commentId')
   deleteComment(
     @CurrentUser() user: any,

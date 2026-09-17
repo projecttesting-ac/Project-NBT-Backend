@@ -8,16 +8,30 @@ import {
   UseGuards,
 } from '@nestjs/common';
 
+import { Throttle } from '@nestjs/throttler';
+
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
+
 import { NotificationsService } from './notifications.service';
 
 @Controller('notifications')
 @UseGuards(JwtAuthGuard)
+@Throttle({
+  default: {
+    limit: 60,
+    ttl: 60 * 1000,
+  },
+})
 export class NotificationsController {
   constructor(
     private readonly notificationsService: NotificationsService,
   ) {}
+
+  // =========================================================
+  // GET MY NOTIFICATIONS
+  // 60 requests / 1 minute
+  // =========================================================
 
   @Get()
   getMyNotifications(
@@ -32,6 +46,11 @@ export class NotificationsController {
     );
   }
 
+  // =========================================================
+  // GET UNREAD COUNT
+  // 60 requests / 1 minute
+  // =========================================================
+
   @Get('unread-count')
   getUnreadCount(
     @CurrentUser() user: any,
@@ -41,6 +60,11 @@ export class NotificationsController {
     );
   }
 
+  // =========================================================
+  // MARK ALL AS READ
+  // 60 requests / 1 minute
+  // =========================================================
+
   @Patch('read-all')
   markAllAsRead(
     @CurrentUser() user: any,
@@ -49,6 +73,11 @@ export class NotificationsController {
       user.id,
     );
   }
+
+  // =========================================================
+  // MARK NOTIFICATION AS READ
+  // 60 requests / 1 minute
+  // =========================================================
 
   @Patch(':notificationId/read')
   markAsRead(
@@ -60,6 +89,11 @@ export class NotificationsController {
       notificationId,
     );
   }
+
+  // =========================================================
+  // DELETE NOTIFICATION
+  // 60 requests / 1 minute
+  // =========================================================
 
   @Delete(':notificationId')
   deleteNotification(

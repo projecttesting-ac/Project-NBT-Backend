@@ -9,11 +9,14 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { ClubsService } from './clubs.service';
+
 import { CreateClubDto } from './dto/create-club.dto';
 import { UpdateClubDto } from './dto/update-club.dto';
+
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 
@@ -25,10 +28,16 @@ export class ClubsController {
 
   // =========================================================
   // CREATE CLUB
-  // POST /api/clubs
+  // 30 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 30,
+      ttl: 60 * 1000,
+    },
+  })
   @Post()
   createClub(
     @CurrentUser() user: any,
@@ -42,10 +51,16 @@ export class ClubsController {
 
   // =========================================================
   // GET ALL CLUBS
-  // GET /api/clubs?page=1&limit=10
+  // 30 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 30,
+      ttl: 60 * 1000,
+    },
+  })
   @Get()
   findAll(
     @CurrentUser() user: any,
@@ -59,10 +74,16 @@ export class ClubsController {
 
   // =========================================================
   // GET SUGGESTED CLUBS
-  // GET /api/clubs/suggested
+  // 30 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 30,
+      ttl: 60 * 1000,
+    },
+  })
   @Get('suggested')
   getSuggested(
     @CurrentUser() user: any,
@@ -74,10 +95,16 @@ export class ClubsController {
 
   // =========================================================
   // GET MY CLUBS
-  // GET /api/clubs/my
+  // 30 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 30,
+      ttl: 60 * 1000,
+    },
+  })
   @Get('my')
   getMyClubs(
     @CurrentUser() user: any,
@@ -89,10 +116,16 @@ export class ClubsController {
 
   // =========================================================
   // GET SINGLE CLUB
-  // GET /api/clubs/:clubId
+  // 30 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 30,
+      ttl: 60 * 1000,
+    },
+  })
   @Get(':clubId')
   getOne(
     @CurrentUser() user: any,
@@ -106,10 +139,16 @@ export class ClubsController {
 
   // =========================================================
   // GET CLUB MEMBERS
-  // GET /api/clubs/:clubId/members
+  // 30 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 30,
+      ttl: 60 * 1000,
+    },
+  })
   @Get(':clubId/members')
   getMembers(
     @Param('clubId') clubId: string,
@@ -121,10 +160,16 @@ export class ClubsController {
 
   // =========================================================
   // JOIN CLUB
-  // POST /api/clubs/:clubId/join
+  // 20 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 20,
+      ttl: 60 * 1000,
+    },
+  })
   @Post(':clubId/join')
   joinClub(
     @CurrentUser() user: any,
@@ -138,10 +183,16 @@ export class ClubsController {
 
   // =========================================================
   // LEAVE CLUB
-  // DELETE /api/clubs/:clubId/leave
+  // 20 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 20,
+      ttl: 60 * 1000,
+    },
+  })
   @Delete(':clubId/leave')
   leaveClub(
     @CurrentUser() user: any,
@@ -155,10 +206,16 @@ export class ClubsController {
 
   // =========================================================
   // UPDATE CLUB
-  // PATCH /api/clubs/:clubId
+  // 30 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 30,
+      ttl: 60 * 1000,
+    },
+  })
   @Patch(':clubId')
   updateClub(
     @CurrentUser() user: any,
@@ -174,10 +231,16 @@ export class ClubsController {
 
   // =========================================================
   // DELETE CLUB
-  // DELETE /api/clubs/:clubId
+  // 30 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 30,
+      ttl: 60 * 1000,
+    },
+  })
   @Delete(':clubId')
   deleteClub(
     @CurrentUser() user: any,
@@ -191,10 +254,16 @@ export class ClubsController {
 
   // =========================================================
   // REMOVE MEMBER
-  // DELETE /api/clubs/:clubId/members/:userId
+  // 20 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 20,
+      ttl: 60 * 1000,
+    },
+  })
   @Delete(':clubId/members/:userId')
   removeMember(
     @CurrentUser() user: any,
@@ -210,10 +279,16 @@ export class ClubsController {
 
   // =========================================================
   // CHANGE MEMBER ROLE
-  // PATCH /api/clubs/:clubId/members/:userId/role
+  // 20 requests / 1 minute
   // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 20,
+      ttl: 60 * 1000,
+    },
+  })
   @Patch(':clubId/members/:userId/role')
   updateMemberRole(
     @CurrentUser() user: any,

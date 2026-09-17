@@ -6,14 +6,17 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 
+import { Throttle } from '@nestjs/throttler';
 import { FileInterceptor } from '@nestjs/platform-express';
 
 import { ConversationsService } from './conversations.service';
+
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 
@@ -21,19 +24,27 @@ import { SendMessageDto } from './dto/send-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { ForwardMessageDto } from './dto/forward-message.dto';
 import { ReactMessageDto } from './dto/react-message.dto';
-import { Query } from '@nestjs/common';
+
 import { PaginationDto } from '../common/dto/pagination.dto';
+
 @Controller('conversations')
 export class ConversationsController {
   constructor(
     private readonly conversationsService: ConversationsService,
   ) {}
 
-  // =========================
+  // =========================================================
   // CREATE CONVERSATION + SEND MESSAGE + OPTIONAL MEDIA
-  // =========================
+  // 120 requests / 1 minute
+  // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 120,
+      ttl: 60 * 1000,
+    },
+  })
   @Post(':targetUserId')
   @UseInterceptors(FileInterceptor('file'))
   createConversation(
@@ -50,44 +61,60 @@ export class ConversationsController {
     );
   }
 
-  // =========================
+  // =========================================================
   // GET CONVERSATIONS
-  // =========================
+  // Global authenticated fallback: 100 requests / 1 minute
+  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Get()
   getConversations(
-  @CurrentUser() user: any,
-  @Query() pagination: PaginationDto,
-) {
-  return this.conversationsService.getConversations(
-    user.id,
-    pagination,
-  );
-}
+    @CurrentUser() user: any,
+    @Query() pagination: PaginationDto,
+  ) {
+    return this.conversationsService.getConversations(
+      user.id,
+      pagination,
+    );
+  }
 
-  // =========================
+  // =========================================================
   // GET MESSAGES
-  // =========================
+  // 120 requests / 1 minute
+  // =========================================================
 
   @UseGuards(JwtAuthGuard)
-@Get(':conversationId/messages')
-getMessages(
-  @CurrentUser() user: any,
-  @Param('conversationId') conversationId: string,
-  @Query() pagination: PaginationDto,
-) {
-  return this.conversationsService.getMessages(
-    user.id,
-    conversationId,
-    pagination,
-  );
-}
-  // =========================
+  @Throttle({
+    default: {
+      limit: 120,
+      ttl: 60 * 1000,
+    },
+  })
+  @Get(':conversationId/messages')
+  getMessages(
+    @CurrentUser() user: any,
+    @Param('conversationId') conversationId: string,
+    @Query() pagination: PaginationDto,
+  ) {
+    return this.conversationsService.getMessages(
+      user.id,
+      conversationId,
+      pagination,
+    );
+  }
+
+  // =========================================================
   // SEND MESSAGE
-  // =========================
+  // 120 requests / 1 minute
+  // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 120,
+      ttl: 60 * 1000,
+    },
+  })
   @Post(':conversationId/messages')
   @UseInterceptors(FileInterceptor('file'))
   sendMessage(
@@ -104,9 +131,10 @@ getMessages(
     );
   }
 
-  // =========================
+  // =========================================================
   // MARK ALL MESSAGES AS READ
-  // =========================
+  // Global authenticated fallback: 100 requests / 1 minute
+  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Patch(':conversationId/read')
@@ -120,9 +148,10 @@ getMessages(
     );
   }
 
-  // =========================
+  // =========================================================
   // MARK MESSAGE AS DELIVERED
-  // =========================
+  // Global authenticated fallback: 100 requests / 1 minute
+  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Patch(':conversationId/messages/:messageId/delivered')
@@ -138,9 +167,10 @@ getMessages(
     );
   }
 
-  // =========================
+  // =========================================================
   // MARK MESSAGE AS SEEN
-  // =========================
+  // Global authenticated fallback: 100 requests / 1 minute
+  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Patch(':conversationId/messages/:messageId/seen')
@@ -156,11 +186,18 @@ getMessages(
     );
   }
 
-  // =========================
+  // =========================================================
   // UPDATE MESSAGE
-  // =========================
+  // 30 requests / 1 minute
+  // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 30,
+      ttl: 60 * 1000,
+    },
+  })
   @Patch(':conversationId/messages/:messageId')
   updateMessage(
     @CurrentUser() user: any,
@@ -176,11 +213,18 @@ getMessages(
     );
   }
 
-  // =========================
+  // =========================================================
   // DELETE MESSAGE
-  // =========================
+  // 30 requests / 1 minute
+  // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 30,
+      ttl: 60 * 1000,
+    },
+  })
   @Delete(':conversationId/messages/:messageId')
   deleteMessage(
     @CurrentUser() user: any,
@@ -194,11 +238,18 @@ getMessages(
     );
   }
 
-  // =========================
+  // =========================================================
   // FORWARD MESSAGE
-  // =========================
+  // 30 requests / 1 minute
+  // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 30,
+      ttl: 60 * 1000,
+    },
+  })
   @Post(':conversationId/messages/:messageId/forward')
   forwardMessage(
     @CurrentUser() user: any,
@@ -214,11 +265,18 @@ getMessages(
     );
   }
 
-  // =========================
+  // =========================================================
   // ADD / CHANGE REACTION
-  // =========================
+  // 60 requests / 1 minute
+  // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 60,
+      ttl: 60 * 1000,
+    },
+  })
   @Post(':conversationId/messages/:messageId/reaction')
   addReaction(
     @CurrentUser() user: any,
@@ -234,11 +292,18 @@ getMessages(
     );
   }
 
-  // =========================
+  // =========================================================
   // REMOVE REACTION
-  // =========================
+  // 60 requests / 1 minute
+  // =========================================================
 
   @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 60,
+      ttl: 60 * 1000,
+    },
+  })
   @Delete(':conversationId/messages/:messageId/reaction')
   removeReaction(
     @CurrentUser() user: any,

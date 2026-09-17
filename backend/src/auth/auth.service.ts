@@ -8,6 +8,8 @@ import {
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 
+import { normalizePhoneNumber } from '../common/utils/phone.util';
+
 import { ResetPasswordDto } from './dto/reset-password.dto';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
@@ -153,10 +155,19 @@ export class AuthService {
 
   async register(registerDto: RegisterDto) {
     const {
-      mobileNumber,
+      countryCode,
+      mobileNumber: localMobileNumber,
       password,
       confirmPassword,
     } = registerDto;
+
+    // Convert country code + local number
+    // into normalized international format.
+    const mobileNumber =
+      normalizePhoneNumber(
+        countryCode,
+        localMobileNumber,
+      );
 
     if (password !== confirmPassword) {
       throw new BadRequestException(
@@ -170,8 +181,13 @@ export class AuthService {
       error: checkError,
     } = await supabase
       .from('users')
-      .select('id, is_mobile_verified')
-      .eq('mobile_number', mobileNumber)
+      .select(
+        'id, is_mobile_verified',
+      )
+      .eq(
+        'mobile_number',
+        mobileNumber,
+      )
       .maybeSingle();
 
     if (checkError) {
@@ -181,7 +197,9 @@ export class AuthService {
     }
 
     if (existingUser) {
-      if (!existingUser.is_mobile_verified) {
+      if (
+        !existingUser.is_mobile_verified
+      ) {
         throw new ConflictException(
           'Registration already started. Please verify your OTP.',
         );
@@ -193,19 +211,24 @@ export class AuthService {
     }
 
     // Hash password temporarily
-    const passwordHash = await bcrypt.hash(
-      password,
-      12,
-    );
+    const passwordHash =
+      await bcrypt.hash(
+        password,
+        12,
+      );
 
     // Generate OTP
-    const otp = this.generateOtp();
+    const otp =
+      this.generateOtp();
 
     // Remove any previous registration OTP
     await supabase
       .from('otp_codes')
       .delete()
-      .eq('mobile_number', mobileNumber);
+      .eq(
+        'mobile_number',
+        mobileNumber,
+      );
 
     // Save OTP + password temporarily
     const {
@@ -213,12 +236,16 @@ export class AuthService {
     } = await supabase
       .from('otp_codes')
       .insert({
-        mobile_number: mobileNumber,
+        mobile_number:
+          mobileNumber,
         otp,
-        password_hash: passwordHash,
-        expires_at: new Date(
-          Date.now() + 5 * 60 * 1000,
-        ).toISOString(),
+        password_hash:
+          passwordHash,
+        expires_at:
+          new Date(
+            Date.now() +
+              5 * 60 * 1000,
+          ).toISOString(),
       });
 
     if (otpError) {
@@ -233,7 +260,8 @@ export class AuthService {
 
     return {
       success: true,
-      message: 'OTP sent successfully.',
+      message:
+        'OTP sent successfully.',
     };
   }
 
@@ -245,9 +273,16 @@ export class AuthService {
     verifyOtpDto: VerifyOtpDto,
   ) {
     const {
-      mobileNumber,
+      countryCode,
+      mobileNumber: localMobileNumber,
       otp,
     } = verifyOtpDto;
+
+    const mobileNumber =
+      normalizePhoneNumber(
+        countryCode,
+        localMobileNumber,
+      );
 
     // Find matching OTP
     const {
@@ -256,7 +291,10 @@ export class AuthService {
     } = await supabase
       .from('otp_codes')
       .select('*')
-      .eq('mobile_number', mobileNumber)
+      .eq(
+        'mobile_number',
+        mobileNumber,
+      )
       .eq('otp', otp)
       .maybeSingle();
 
@@ -275,31 +313,39 @@ export class AuthService {
 
     // OTP expired
     if (
-      new Date(otpData.expires_at) < new Date()
+      new Date(
+        otpData.expires_at,
+      ) < new Date()
     ) {
       throw new UnauthorizedException(
         'OTP has expired.',
       );
     }
 
-    // Password was not saved with registration OTP
+    // Password was not saved
+    // with registration OTP
     if (!otpData.password_hash) {
       throw new BadRequestException(
         'Registration data not found.',
       );
     }
 
-    // Create user ONLY after correct OTP
+    // Create user ONLY after
+    // correct OTP
     const {
       data: user,
       error: userError,
     } = await supabase
       .from('users')
       .insert({
-        mobile_number: mobileNumber,
-        password_hash: otpData.password_hash,
-        is_mobile_verified: true,
-        is_profile_completed: false,
+        mobile_number:
+          mobileNumber,
+        password_hash:
+          otpData.password_hash,
+        is_mobile_verified:
+          true,
+        is_profile_completed:
+          false,
       })
       .select()
       .single();
@@ -310,18 +356,26 @@ export class AuthService {
       );
     }
 
-    // Delete OTP after successful verification
+    // Delete OTP after
+    // successful verification
     await supabase
       .from('otp_codes')
       .delete()
-      .eq('mobile_number', mobileNumber);
+      .eq(
+        'mobile_number',
+        mobileNumber,
+      );
 
     // Create tokens
     const accessToken =
-      this.createAccessToken(user);
+      this.createAccessToken(
+        user,
+      );
 
     const refreshToken =
-      this.createRefreshToken(user);
+      this.createRefreshToken(
+        user,
+      );
 
     await this.saveRefreshToken(
       user.id,
@@ -343,11 +397,20 @@ export class AuthService {
   // LOGIN
   // =========================================================
 
-  async login(loginDto: LoginDto) {
+  async login(
+    loginDto: LoginDto,
+  ) {
     const {
-      mobileNumber,
+      countryCode,
+      mobileNumber: localMobileNumber,
       password,
     } = loginDto;
+
+    const mobileNumber =
+      normalizePhoneNumber(
+        countryCode,
+        localMobileNumber,
+      );
 
     const {
       data: user,
@@ -355,7 +418,10 @@ export class AuthService {
     } = await supabase
       .from('users')
       .select('*')
-      .eq('mobile_number', mobileNumber)
+      .eq(
+        'mobile_number',
+        mobileNumber,
+      )
       .maybeSingle();
 
     if (error) {
@@ -382,7 +448,8 @@ export class AuthService {
       );
     }
 
-    const otp = this.generateOtp();
+    const otp =
+      this.generateOtp();
 
     await this.saveOtp(
       mobileNumber,
@@ -395,7 +462,8 @@ export class AuthService {
 
     return {
       success: true,
-      message: 'OTP sent successfully.',
+      message:
+        'OTP sent successfully.',
     };
   }
 
@@ -407,9 +475,16 @@ export class AuthService {
     verifyOtpDto: VerifyOtpDto,
   ) {
     const {
-      mobileNumber,
+      countryCode,
+      mobileNumber: localMobileNumber,
       otp,
     } = verifyOtpDto;
+
+    const mobileNumber =
+      normalizePhoneNumber(
+        countryCode,
+        localMobileNumber,
+      );
 
     const {
       data: otpData,
@@ -417,7 +492,10 @@ export class AuthService {
     } = await supabase
       .from('otp_codes')
       .select('*')
-      .eq('mobile_number', mobileNumber)
+      .eq(
+        'mobile_number',
+        mobileNumber,
+      )
       .eq('otp', otp)
       .maybeSingle();
 
@@ -434,7 +512,9 @@ export class AuthService {
     }
 
     if (
-      new Date(otpData.expires_at) < new Date()
+      new Date(
+        otpData.expires_at,
+      ) < new Date()
     ) {
       throw new UnauthorizedException(
         'OTP has expired.',
@@ -444,7 +524,10 @@ export class AuthService {
     await supabase
       .from('otp_codes')
       .delete()
-      .eq('mobile_number', mobileNumber);
+      .eq(
+        'mobile_number',
+        mobileNumber,
+      );
 
     const {
       data: user,
@@ -452,10 +535,16 @@ export class AuthService {
     } = await supabase
       .from('users')
       .select('*')
-      .eq('mobile_number', mobileNumber)
+      .eq(
+        'mobile_number',
+        mobileNumber,
+      )
       .single();
 
-    if (userError || !user) {
+    if (
+      userError ||
+      !user
+    ) {
       throw new UnauthorizedException(
         'User not found.',
       );
@@ -465,16 +554,25 @@ export class AuthService {
       .from('users')
       .update({
         is_online: true,
-        last_seen: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        last_seen:
+          new Date().toISOString(),
+        updated_at:
+          new Date().toISOString(),
       })
-      .eq('id', user.id);
+      .eq(
+        'id',
+        user.id,
+      );
 
     const accessToken =
-      this.createAccessToken(user);
+      this.createAccessToken(
+        user,
+      );
 
     const refreshToken =
-      this.createRefreshToken(user);
+      this.createRefreshToken(
+        user,
+      );
 
     await this.saveRefreshToken(
       user.id,
@@ -505,7 +603,8 @@ export class AuthService {
 
     return {
       success: true,
-      message: 'Login successful.',
+      message:
+        'Login successful.',
       accessToken,
       refreshToken,
       isProfileCompleted:
@@ -519,15 +618,25 @@ export class AuthService {
   // =========================================================
 
   async resendOtp(
+    countryCode: string,
     mobileNumber: string,
   ) {
+    const normalizedMobileNumber =
+      normalizePhoneNumber(
+        countryCode,
+        mobileNumber,
+      );
+
     const {
       data: user,
       error,
     } = await supabase
       .from('users')
       .select('id')
-      .eq('mobile_number', mobileNumber)
+      .eq(
+        'mobile_number',
+        normalizedMobileNumber,
+      )
       .maybeSingle();
 
     if (error) {
@@ -542,20 +651,22 @@ export class AuthService {
       );
     }
 
-    const otp = this.generateOtp();
+    const otp =
+      this.generateOtp();
 
     await this.saveOtp(
-      mobileNumber,
+      normalizedMobileNumber,
       otp,
     );
 
     console.log(
-      `📲 Resend OTP (${mobileNumber}) : ${otp}`,
+      `📲 Resend OTP (${normalizedMobileNumber}) : ${otp}`,
     );
 
     return {
       success: true,
-      message: 'OTP resent successfully.',
+      message:
+        'OTP resent successfully.',
     };
   }
 
@@ -567,8 +678,15 @@ export class AuthService {
     dto: ForgotPasswordDto,
   ) {
     const {
-      mobileNumber,
+      countryCode,
+      mobileNumber: localMobileNumber,
     } = dto;
+
+    const mobileNumber =
+      normalizePhoneNumber(
+        countryCode,
+        localMobileNumber,
+      );
 
     const {
       data: user,
@@ -576,7 +694,10 @@ export class AuthService {
     } = await supabase
       .from('users')
       .select('id')
-      .eq('mobile_number', mobileNumber)
+      .eq(
+        'mobile_number',
+        mobileNumber,
+      )
       .maybeSingle();
 
     if (error) {
@@ -591,7 +712,8 @@ export class AuthService {
       );
     }
 
-    const otp = this.generateOtp();
+    const otp =
+      this.generateOtp();
 
     await this.saveOtp(
       mobileNumber,
@@ -604,7 +726,8 @@ export class AuthService {
 
     return {
       success: true,
-      message: 'OTP sent successfully.',
+      message:
+        'OTP sent successfully.',
     };
   }
 
@@ -616,9 +739,16 @@ export class AuthService {
     verifyOtpDto: VerifyOtpDto,
   ) {
     const {
-      mobileNumber,
+      countryCode,
+      mobileNumber: localMobileNumber,
       otp,
     } = verifyOtpDto;
+
+    const mobileNumber =
+      normalizePhoneNumber(
+        countryCode,
+        localMobileNumber,
+      );
 
     const {
       data: otpData,
@@ -626,7 +756,10 @@ export class AuthService {
     } = await supabase
       .from('otp_codes')
       .select('*')
-      .eq('mobile_number', mobileNumber)
+      .eq(
+        'mobile_number',
+        mobileNumber,
+      )
       .eq('otp', otp)
       .maybeSingle();
 
@@ -643,7 +776,9 @@ export class AuthService {
     }
 
     if (
-      new Date(otpData.expires_at) < new Date()
+      new Date(
+        otpData.expires_at,
+      ) < new Date()
     ) {
       throw new UnauthorizedException(
         'OTP has expired.',
@@ -653,22 +788,32 @@ export class AuthService {
     await supabase
       .from('otp_codes')
       .delete()
-      .eq('mobile_number', mobileNumber);
+      .eq(
+        'mobile_number',
+        mobileNumber,
+      );
 
-    const resetToken = randomUUID();
+    const resetToken =
+      randomUUID();
 
-    const expiresAt = new Date(
-      Date.now() + 10 * 60 * 1000,
-    );
+    const expiresAt =
+      new Date(
+        Date.now() +
+          10 * 60 * 1000,
+      );
 
     const {
       error: tokenError,
     } = await supabase
-      .from('password_reset_tokens')
+      .from(
+        'password_reset_tokens',
+      )
       .insert({
-        mobile_number: mobileNumber,
+        mobile_number:
+          mobileNumber,
         token: resetToken,
-        expires_at: expiresAt.toISOString(),
+        expires_at:
+          expiresAt.toISOString(),
       });
 
     if (tokenError) {
@@ -698,7 +843,10 @@ export class AuthService {
       confirmPassword,
     } = dto;
 
-    if (newPassword !== confirmPassword) {
+    if (
+      newPassword !==
+      confirmPassword
+    ) {
       throw new BadRequestException(
         'Passwords do not match.',
       );
@@ -708,9 +856,14 @@ export class AuthService {
       data: tokenData,
       error: tokenError,
     } = await supabase
-      .from('password_reset_tokens')
+      .from(
+        'password_reset_tokens',
+      )
       .select('*')
-      .eq('token', resetToken)
+      .eq(
+        'token',
+        resetToken,
+      )
       .maybeSingle();
 
     if (
@@ -723,7 +876,9 @@ export class AuthService {
     }
 
     if (
-      new Date(tokenData.expires_at) < new Date()
+      new Date(
+        tokenData.expires_at,
+      ) < new Date()
     ) {
       throw new UnauthorizedException(
         'Reset token has expired.',
@@ -741,7 +896,8 @@ export class AuthService {
     } = await supabase
       .from('users')
       .update({
-        password_hash: passwordHash,
+        password_hash:
+          passwordHash,
       })
       .eq(
         'mobile_number',
@@ -775,7 +931,10 @@ export class AuthService {
     // =======================================================
 
     // Notification failure must NOT break password reset.
-    if (!userError && user) {
+    if (
+      !userError &&
+      user
+    ) {
       await this.notificationsService
         .tryCreateNotification(
           user.id,
@@ -790,9 +949,14 @@ export class AuthService {
 
     // Delete used reset token
     await supabase
-      .from('password_reset_tokens')
+      .from(
+        'password_reset_tokens',
+      )
       .delete()
-      .eq('token', resetToken);
+      .eq(
+        'token',
+        resetToken,
+      );
 
     return {
       success: true,
@@ -815,7 +979,10 @@ export class AuthService {
       confirmPassword,
     } = dto;
 
-    if (newPassword !== confirmPassword) {
+    if (
+      newPassword !==
+      confirmPassword
+    ) {
       throw new BadRequestException(
         'Passwords do not match.',
       );
@@ -827,10 +994,16 @@ export class AuthService {
     } = await supabase
       .from('users')
       .select('*')
-      .eq('id', userId)
+      .eq(
+        'id',
+        userId,
+      )
       .maybeSingle();
 
-    if (error || !user) {
+    if (
+      error ||
+      !user
+    ) {
       throw new UnauthorizedException(
         'User not found.',
       );
@@ -859,9 +1032,13 @@ export class AuthService {
     } = await supabase
       .from('users')
       .update({
-        password_hash: passwordHash,
+        password_hash:
+          passwordHash,
       })
-      .eq('id', userId);
+      .eq(
+        'id',
+        userId,
+      );
 
     if (updateError) {
       throw new BadRequestException(
@@ -909,7 +1086,10 @@ export class AuthService {
     } = await supabase
       .from('refresh_tokens')
       .select('*')
-      .eq('token', refreshToken)
+      .eq(
+        'token',
+        refreshToken,
+      )
       .maybeSingle();
 
     if (
@@ -922,7 +1102,9 @@ export class AuthService {
     }
 
     if (
-      new Date(tokenData.expires_at) < new Date()
+      new Date(
+        tokenData.expires_at,
+      ) < new Date()
     ) {
       throw new UnauthorizedException(
         'Refresh token has expired.',
@@ -935,7 +1117,10 @@ export class AuthService {
     } = await supabase
       .from('users')
       .select('*')
-      .eq('id', tokenData.user_id)
+      .eq(
+        'id',
+        tokenData.user_id,
+      )
       .maybeSingle();
 
     if (
@@ -948,7 +1133,9 @@ export class AuthService {
     }
 
     const accessToken =
-      this.createAccessToken(user);
+      this.createAccessToken(
+        user,
+      );
 
     return {
       success: true,
@@ -974,7 +1161,10 @@ export class AuthService {
     } = await supabase
       .from('refresh_tokens')
       .select('user_id')
-      .eq('token', refreshToken)
+      .eq(
+        'token',
+        refreshToken,
+      )
       .maybeSingle();
 
     if (
@@ -991,8 +1181,10 @@ export class AuthService {
       .from('users')
       .update({
         is_online: false,
-        last_seen: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        last_seen:
+          new Date().toISOString(),
+        updated_at:
+          new Date().toISOString(),
       })
       .eq(
         'id',

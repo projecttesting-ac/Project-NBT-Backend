@@ -1,15 +1,22 @@
-import {IsMobilePhone,IsNotEmpty,IsString,} 
-from 'class-validator';
-
-
-/*class LoginDto {
- mobileNumber: string;
- password: string;
- then login otp verification
-}*/
+import {
+  IsNotEmpty,
+  IsString,
+  Matches,
+} from 'class-validator';
 
 export class LoginDto {
-  @IsMobilePhone('en-IN')
+  @IsString()
+  @IsNotEmpty()
+  @Matches(/^\+[1-9]\d{0,3}$/, {
+    message: 'Please select a valid country code.',
+  })
+  countryCode!: string;
+
+  @IsString()
+  @IsNotEmpty()
+  @Matches(/^\d{4,15}$/, {
+    message: 'Please enter a valid mobile number.',
+  })
   mobileNumber!: string;
 
   @IsString()
