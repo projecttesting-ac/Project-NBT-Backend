@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 
 import { Throttle } from '@nestjs/throttler';
+
 import { FileInterceptor } from '@nestjs/platform-express';
 
 import { UsersService } from './users.service';
@@ -27,11 +28,6 @@ export class UsersController {
     private readonly usersService: UsersService,
   ) {}
 
-  // =========================================================
-  // CREATE PROFILE
-  // 60 requests / 1 minute
-  // =========================================================
-
   @UseGuards(JwtAuthGuard)
   @Throttle({
     default: {
@@ -44,16 +40,12 @@ export class UsersController {
     @CurrentUser() user: any,
     @Body() dto: CreateProfileDto,
   ) {
+    // create the user's profile
     return this.usersService.createProfile(
       user.id,
       dto,
     );
   }
-
-  // =========================================================
-  // GET MY PROFILE
-  // 60 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -66,15 +58,11 @@ export class UsersController {
   getMe(
     @CurrentUser() user: any,
   ) {
+    // get the logged in user's profile
     return this.usersService.getMe(
       user.id,
     );
   }
-
-  // =========================================================
-  // SET ONLINE
-  // 60 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -87,15 +75,11 @@ export class UsersController {
   setOnline(
     @CurrentUser() user: any,
   ) {
+    // mark the user as online
     return this.usersService.setOnline(
       user.id,
     );
   }
-
-  // =========================================================
-  // SET OFFLINE
-  // 60 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -108,15 +92,11 @@ export class UsersController {
   setOffline(
     @CurrentUser() user: any,
   ) {
+    // mark the user as offline
     return this.usersService.setOffline(
       user.id,
     );
   }
-
-  // =========================================================
-  // UPDATE PROFILE
-  // 60 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -130,16 +110,12 @@ export class UsersController {
     @CurrentUser() user: any,
     @Body() dto: UpdateProfileDto,
   ) {
+    // update the user's profile
     return this.usersService.updateProfile(
       user.id,
       dto,
     );
   }
-
-  // =========================================================
-  // CHECK USERNAME
-  // 60 requests / 1 minute
-  // =========================================================
 
   @Throttle({
     default: {
@@ -151,15 +127,11 @@ export class UsersController {
   checkUsername(
     @Param('username') username: string,
   ) {
+    // check if the username is available
     return this.usersService.checkUsername(
       username,
     );
   }
-
-  // =========================================================
-  // UPLOAD AVATAR
-  // 60 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -180,16 +152,12 @@ export class UsersController {
     @CurrentUser() user: any,
     @UploadedFile() file: any,
   ) {
+    // upload the user's avatar
     return this.usersService.uploadAvatar(
       user.id,
       file,
     );
   }
-
-  // =========================================================
-  // GENERATE / GET MY QR
-  // 30 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -202,15 +170,11 @@ export class UsersController {
   getMyQr(
     @CurrentUser() user: any,
   ) {
+    // get the user's QR data
     return this.usersService.getMyQr(
       user.id,
     );
   }
-
-  // =========================================================
-  // RESOLVE QR PROFILE
-  // 30 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -223,6 +187,7 @@ export class UsersController {
   resolveQrProfile(
     @Param('qrId') qrId: string,
   ) {
+    // find the profile linked to the QR
     return this.usersService.resolveQrProfile(
       qrId,
     );

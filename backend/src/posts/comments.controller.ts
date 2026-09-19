@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+
 import { Throttle } from '@nestjs/throttler';
 
 import { CommentsService } from './comments.service';
@@ -26,11 +27,6 @@ export class CommentsController {
     private readonly commentsService: CommentsService,
   ) {}
 
-  // =========================================================
-  // CREATE COMMENT / REPLY
-  // 30 requests / 1 minute
-  // =========================================================
-
   @UseGuards(JwtAuthGuard)
   @Throttle({
     default: {
@@ -44,6 +40,7 @@ export class CommentsController {
     @Param('postId') postId: string,
     @Body() dto: CreateCommentDto,
   ) {
+    // create a comment or reply
     return this.commentsService.createComment(
       user.id,
       postId,
@@ -52,11 +49,6 @@ export class CommentsController {
     );
   }
 
-  // =========================================================
-  // GET COMMENTS
-  // Global fallback: 100 requests / 1 minute
-  // =========================================================
-
   @UseGuards(JwtAuthGuard)
   @Get()
   getComments(
@@ -64,17 +56,13 @@ export class CommentsController {
     @Param('postId') postId: string,
     @Query() pagination: PaginationDto,
   ) {
+    // get comments for the post
     return this.commentsService.getComments(
       postId,
       user.id,
       pagination,
     );
   }
-
-  // =========================================================
-  // UPDATE COMMENT / REPLY
-  // 30 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -90,6 +78,7 @@ export class CommentsController {
     @Param('commentId') commentId: string,
     @Body() dto: UpdateCommentDto,
   ) {
+    // update the comment
     return this.commentsService.updateComment(
       user.id,
       postId,
@@ -97,11 +86,6 @@ export class CommentsController {
       dto.content,
     );
   }
-
-  // =========================================================
-  // DELETE COMMENT / REPLY
-  // 30 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -116,6 +100,7 @@ export class CommentsController {
     @Param('postId') postId: string,
     @Param('commentId') commentId: string,
   ) {
+    // delete the comment or reply
     return this.commentsService.deleteComment(
       user.id,
       postId,

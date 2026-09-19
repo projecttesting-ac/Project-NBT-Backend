@@ -15,6 +15,8 @@ import { JwtService } from '@nestjs/jwt';
 
 import { supabase } from '../../config/supabase';
 
+import { normalizePhoneNumber } from '../utils/phone.util';
+
 @Injectable()
 export class CustomThrottlerGuard extends ThrottlerGuard {
   constructor(
@@ -30,42 +32,33 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
     );
   }
 
-  // =========================================================
-  // MAIN TRACKER
-  // =========================================================
-
   protected async getTracker(
     req: Record<string, any>,
   ): Promise<string> {
     const ip = this.getIpAddress(req);
-
-    const method = String(
-      req.method || '',
-    ).toUpperCase();
-
     const path = this.getRequestPath(req);
 
-    // =======================================================
-    // AUTH ROUTES
-    // =======================================================
-
+    // use the phone number to keep login attempts separate by account
     if (path === '/auth/login') {
-      return this.getIpAndAccount(
+      return this.getPhoneAccountTracker(
         ip,
+        req.body?.countryCode,
         req.body?.mobileNumber,
       );
     }
 
+    // registration is limited by IP
     if (path === '/auth/register') {
-      // Register is intentionally IP-only.
       return `ip:${ip}`;
     }
 
+    // keep OTP attempts tied to the account and IP
     if (
       path === '/auth/verify-login-otp'
     ) {
-      return this.getIpAndAccount(
+      return this.getPhoneAccountTracker(
         ip,
+        req.body?.countryCode,
         req.body?.mobileNumber,
       );
     }
@@ -73,15 +66,17 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
     if (
       path === '/auth/verify-register-otp'
     ) {
-      return this.getIpAndAccount(
+      return this.getPhoneAccountTracker(
         ip,
+        req.body?.countryCode,
         req.body?.mobileNumber,
       );
     }
 
     if (path === '/auth/resend-otp') {
-      return this.getIpAndAccount(
+      return this.getPhoneAccountTracker(
         ip,
+        req.body?.countryCode,
         req.body?.mobileNumber,
       );
     }
@@ -89,8 +84,9 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
     if (
       path === '/auth/forgot-password'
     ) {
-      return this.getIpAndAccount(
+      return this.getPhoneAccountTracker(
         ip,
+        req.body?.countryCode,
         req.body?.mobileNumber,
       );
     }
@@ -99,16 +95,12 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
       path ===
       '/auth/verify-forgot-password-otp'
     ) {
-      return this.getIpAndAccount(
+      return this.getPhoneAccountTracker(
         ip,
+        req.body?.countryCode,
         req.body?.mobileNumber,
       );
     }
-
-    // =======================================================
-    // RESET PASSWORD
-    // Account + IP protection
-    // =======================================================
 
     if (
       path === '/auth/reset-password'
@@ -119,11 +111,7 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
       );
     }
 
-    // =======================================================
-    // CHANGE PASSWORD
-    // userId
-    // =======================================================
-
+    // authenticated password changes use the user ID
     if (
       path === '/auth/change-password'
     ) {
@@ -139,12 +127,7 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
       return `ip:${ip}`;
     }
 
-    // =======================================================
-    // USERNAME CHECK
-    // Authenticated → userId
-    // Unauthenticated → IP
-    // =======================================================
-
+    // use the user ID when logged in, otherwise use the IP
     if (
       path.startsWith(
         '/users/check-username/',
@@ -162,10 +145,6 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
       return `ip:${ip}`;
     }
 
-    // =======================================================
-    // AUTHENTICATED APPLICATION APIs
-    // =======================================================
-
     const userId =
       await this.getAuthenticatedUserId(
         req,
@@ -175,16 +154,9 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
       return `user:${userId}`;
     }
 
-    // =======================================================
-    // PUBLIC / GENERAL APIs
-    // =======================================================
-
+    // unauthenticated requests are tracked by IP
     return `ip:${ip}`;
   }
-
-  // =========================================================
-  // GET IP ADDRESS
-  // =========================================================
 
   private getIpAddress(
     req: Record<string, any>,
@@ -210,65 +182,39 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
     );
   }
 
-  // =========================================================
-  // GET REQUEST PATH
-  // =========================================================
-
   private getRequestPath(
     req: Record<string, any>,
   ): string {
-    return String(
+    const path = String(
       req.path ||
         req.url?.split('?')[0] ||
         '',
-    ).replace(/^\/api/, '');
+    );
+
+    return path.replace(
+      /^\/api/,
+      '',
+    );
   }
 
-  // =========================================================
-  // IP + ACCOUNT
-  // =========================================================
-
-  private getIpAndAccount(
+  private getPhoneAccountTracker(
     ip: string,
-    account: unknown,
+    countryCode: unknown,
+    mobileNumber: unknown,
   ): string {
-    const normalizedAccount =
-      this.normalizeAccount(account);
+    try {
+      const normalizedPhone =
+        normalizePhoneNumber(
+          String(countryCode || ''),
+          String(mobileNumber || ''),
+        );
 
-    if (!normalizedAccount) {
+      return `ip:${ip}:account:${normalizedPhone}`;
+    } catch {
+      // fall back to IP when the phone number is invalid
       return `ip:${ip}`;
     }
-
-    return `ip:${ip}:account:${normalizedAccount}`;
   }
-
-  // =========================================================
-  // NORMALIZE ACCOUNT
-  // =========================================================
-
-  private normalizeAccount(
-    account: unknown,
-  ): string | null {
-    if (
-      account === undefined ||
-      account === null
-    ) {
-      return null;
-    }
-
-    const value =
-      String(account).trim();
-
-    if (!value) {
-      return null;
-    }
-
-    return value.toLowerCase();
-  }
-
-  // =========================================================
-  // GET AUTHENTICATED USER ID
-  // =========================================================
 
   private async getAuthenticatedUserId(
     req: Record<string, any>,
@@ -292,7 +238,9 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
     }
 
     const token =
-      authorization.substring(7).trim();
+      authorization
+        .substring(7)
+        .trim();
 
     if (!token) {
       return null;
@@ -319,10 +267,6 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
     }
   }
 
-  // =========================================================
-  // RESET PASSWORD TRACKER
-  // =========================================================
-
   private async getResetPasswordTracker(
     ip: string,
     resetToken: unknown,
@@ -333,8 +277,6 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
         ? ''
         : String(resetToken).trim();
 
-    // Invalid/missing token:
-    // protect using IP.
     if (!token) {
       return `ip:${ip}`;
     }
@@ -345,7 +287,9 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
         error,
       } = await supabase
         .from('password_reset_tokens')
-        .select('mobile_number, expires_at')
+        .select(
+          'mobile_number, expires_at',
+        )
         .eq('token', token)
         .maybeSingle();
 
@@ -353,11 +297,10 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
         error ||
         !tokenData
       ) {
-        // Unknown token → IP protection
         return `ip:${ip}`;
       }
 
-      // Expired token → IP protection
+      // expired tokens are handled with the IP limit
       if (
         new Date(
           tokenData.expires_at,
@@ -377,9 +320,28 @@ export class CustomThrottlerGuard extends ThrottlerGuard {
 
       return `ip:${ip}:account:${account}`;
     } catch {
-      // Never allow throttler lookup failure
-      // to break the application.
+      // don't let a throttler lookup error break the request
       return `ip:${ip}`;
     }
+  }
+
+  private normalizeAccount(
+    account: unknown,
+  ): string | null {
+    if (
+      account === undefined ||
+      account === null
+    ) {
+      return null;
+    }
+
+    const value =
+      String(account).trim();
+
+    if (!value) {
+      return null;
+    }
+
+    return value.toLowerCase();
   }
 }

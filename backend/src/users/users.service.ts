@@ -13,11 +13,6 @@ import { supabase } from '../config/supabase';
 
 @Injectable()
 export class UsersService {
-
-  // =========================================================
-  // DATE OF BIRTH VALIDATION
-  // =========================================================
-
   private convertDateOfBirth(
     dateOfBirth?: string,
   ): string | undefined {
@@ -49,14 +44,13 @@ export class UsersService {
     const monthNumber = Number(month);
     const yearNumber = Number(year);
 
-    // Create date
     const date = new Date(
       yearNumber,
       monthNumber - 1,
       dayNumber,
     );
 
-    // Check if the date actually exists
+    // make sure the date is actually valid
     if (
       date.getFullYear() !== yearNumber ||
       date.getMonth() !== monthNumber - 1 ||
@@ -66,11 +60,6 @@ export class UsersService {
         'Invalid date of birth.',
       );
     }
-
-    // =========================================================
-    // NBT AGE REQUIREMENT
-    // Minimum age: 18 years
-    // =========================================================
 
     const today = new Date();
 
@@ -97,16 +86,11 @@ export class UsersService {
     return `${year}-${month}-${day}`;
   }
 
-  // =========================================================
-  // CREATE PROFILE
-  // =========================================================
-
   async createProfile(
     userId: string,
     dto: CreateProfileDto,
   ) {
-
-    // Check if user already has a completed profile
+    // check if the user already has a profile
     const {
       data: existingProfile,
       error: profileError,
@@ -144,11 +128,10 @@ export class UsersService {
       avatarUrl,
     } = dto;
 
-    // Normalize username
     const normalizedUsername =
       username.trim().toLowerCase();
 
-    // Check if username is already taken
+    // check if the username is already taken
     const {
       data: existingUser,
       error: checkError,
@@ -176,7 +159,6 @@ export class UsersService {
       );
     }
 
-    // Create profile
     const {
       data,
       error,
@@ -221,10 +203,6 @@ export class UsersService {
     };
   }
 
-  // =========================================================
-  // GET MY PROFILE
-  // =========================================================
-
   async getMe(userId: string) {
     const {
       data: user,
@@ -255,10 +233,6 @@ export class UsersService {
     };
   }
 
-  // =========================================================
-  // SET ONLINE
-  // =========================================================
-
   async setOnline(userId: string) {
     const {
       error,
@@ -283,10 +257,6 @@ export class UsersService {
         'User is online.',
     };
   }
-
-  // =========================================================
-  // SET OFFLINE
-  // =========================================================
 
   async setOffline(userId: string) {
     const now =
@@ -316,19 +286,10 @@ export class UsersService {
     };
   }
 
-  // =========================================================
-  // UPDATE PROFILE
-  // =========================================================
-
   async updateProfile(
     userId: string,
     dto: UpdateProfileDto,
   ) {
-
-    // -------------------------------------------------------
-    // USERNAME
-    // -------------------------------------------------------
-
     if (
       dto.username !== undefined
     ) {
@@ -337,6 +298,7 @@ export class UsersService {
           .trim()
           .toLowerCase();
 
+      // check if the new username is already taken
       const {
         data: existingUser,
         error: checkError,
@@ -367,10 +329,6 @@ export class UsersService {
       dto.username =
         normalizedUsername;
     }
-
-    // -------------------------------------------------------
-    // BUILD UPDATE OBJECT
-    // -------------------------------------------------------
 
     const updates: Record<
       string,
@@ -438,10 +396,7 @@ export class UsersService {
     updates.updated_at =
       new Date().toISOString();
 
-    // -------------------------------------------------------
-    // UPDATE DATABASE
-    // -------------------------------------------------------
-
+    // save the updated profile
     const {
       error,
     } = await supabase
@@ -461,10 +416,6 @@ export class UsersService {
         'Profile updated successfully.',
     };
   }
-
-  // =========================================================
-  // CHECK USERNAME
-  // =========================================================
 
   async checkUsername(
     username: string,
@@ -497,10 +448,6 @@ export class UsersService {
       available: !data,
     };
   }
-
-  // =========================================================
-  // UPLOAD AVATAR
-  // =========================================================
 
   async uploadAvatar(
     userId: string,
@@ -550,6 +497,7 @@ export class UsersService {
         fileName,
       );
 
+    // save the avatar URL to the user's profile
     const {
       error: updateError,
     } = await supabase
@@ -576,10 +524,6 @@ export class UsersService {
         publicUrl,
     };
   }
-
-  // =========================================================
-  // RESOLVE QR PROFILE
-  // =========================================================
 
   async resolveQrProfile(
     qrId: string,
@@ -654,10 +598,6 @@ export class UsersService {
     };
   }
 
-  // =========================================================
-  // GET MY QR
-  // =========================================================
-
   async getMyQr(userId: string) {
     const {
       data: user,
@@ -701,8 +641,7 @@ export class UsersService {
         qrId:
           user.qr_id,
 
-        // Frontend puts this value inside
-        // the generated QR code.
+        // frontend uses this value to generate the QR code
         qrData:
           user.qr_id,
 

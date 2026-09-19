@@ -9,11 +9,11 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+
 import { Throttle } from '@nestjs/throttler';
 
 import { PaginationDto } from '../common/dto/pagination.dto';
 import { ClubsService } from './clubs.service';
-
 import { CreateClubDto } from './dto/create-club.dto';
 import { UpdateClubDto } from './dto/update-club.dto';
 
@@ -25,11 +25,6 @@ export class ClubsController {
   constructor(
     private readonly clubsService: ClubsService,
   ) {}
-
-  // =========================================================
-  // CREATE CLUB
-  // 30 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -43,16 +38,12 @@ export class ClubsController {
     @CurrentUser() user: any,
     @Body() dto: CreateClubDto,
   ) {
+    // create a new club
     return this.clubsService.createClub(
       user.id,
       dto,
     );
   }
-
-  // =========================================================
-  // GET ALL CLUBS
-  // 30 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -66,16 +57,12 @@ export class ClubsController {
     @CurrentUser() user: any,
     @Query() pagination: PaginationDto,
   ) {
+    // get clubs for the current user
     return this.clubsService.findAll(
       user.id,
       pagination,
     );
   }
-
-  // =========================================================
-  // GET SUGGESTED CLUBS
-  // 30 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -88,15 +75,11 @@ export class ClubsController {
   getSuggested(
     @CurrentUser() user: any,
   ) {
+    // get clubs suggested for the user
     return this.clubsService.getSuggested(
       user.id,
     );
   }
-
-  // =========================================================
-  // GET MY CLUBS
-  // 30 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -109,15 +92,11 @@ export class ClubsController {
   getMyClubs(
     @CurrentUser() user: any,
   ) {
+    // get clubs the user has joined
     return this.clubsService.getMyClubs(
       user.id,
     );
   }
-
-  // =========================================================
-  // GET SINGLE CLUB
-  // 30 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -131,16 +110,12 @@ export class ClubsController {
     @CurrentUser() user: any,
     @Param('clubId') clubId: string,
   ) {
+    // get one club
     return this.clubsService.getOne(
       user.id,
       clubId,
     );
   }
-
-  // =========================================================
-  // GET CLUB MEMBERS
-  // 30 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -153,15 +128,11 @@ export class ClubsController {
   getMembers(
     @Param('clubId') clubId: string,
   ) {
+    // get all members of the club
     return this.clubsService.getMembers(
       clubId,
     );
   }
-
-  // =========================================================
-  // JOIN CLUB
-  // 20 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -175,16 +146,12 @@ export class ClubsController {
     @CurrentUser() user: any,
     @Param('clubId') clubId: string,
   ) {
+    // join a club
     return this.clubsService.joinClub(
       user.id,
       clubId,
     );
   }
-
-  // =========================================================
-  // LEAVE CLUB
-  // 20 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -198,16 +165,12 @@ export class ClubsController {
     @CurrentUser() user: any,
     @Param('clubId') clubId: string,
   ) {
+    // leave a club
     return this.clubsService.leaveClub(
       user.id,
       clubId,
     );
   }
-
-  // =========================================================
-  // UPDATE CLUB
-  // 30 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -222,17 +185,13 @@ export class ClubsController {
     @Param('clubId') clubId: string,
     @Body() dto: UpdateClubDto,
   ) {
+    // update club details
     return this.clubsService.updateClub(
       user.id,
       clubId,
       dto,
     );
   }
-
-  // =========================================================
-  // DELETE CLUB
-  // 30 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -246,16 +205,12 @@ export class ClubsController {
     @CurrentUser() user: any,
     @Param('clubId') clubId: string,
   ) {
+    // delete the club
     return this.clubsService.deleteClub(
       user.id,
       clubId,
     );
   }
-
-  // =========================================================
-  // REMOVE MEMBER
-  // 20 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -270,17 +225,13 @@ export class ClubsController {
     @Param('clubId') clubId: string,
     @Param('userId') targetUserId: string,
   ) {
+    // remove a member from the club
     return this.clubsService.removeMember(
       user.id,
       clubId,
       targetUserId,
     );
   }
-
-  // =========================================================
-  // CHANGE MEMBER ROLE
-  // 20 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -296,6 +247,7 @@ export class ClubsController {
     @Param('userId') targetUserId: string,
     @Body('role') role: string,
   ) {
+    // change a member's role
     return this.clubsService.updateMemberRole(
       user.id,
       clubId,

@@ -9,14 +9,9 @@ import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class CommentsService {
-
   constructor(
     private readonly notificationsService: NotificationsService,
   ) {}
-
-  // =========================================================
-  // CREATE COMMENT / REPLY
-  // =========================================================
 
   async createComment(
     userId: string,
@@ -33,10 +28,7 @@ export class CommentsService {
     const trimmedContent =
       content.trim();
 
-    // -------------------------------------------------------
-    // CHECK POST
-    // -------------------------------------------------------
-
+    // check if the post exists
     const {
       data: post,
       error: postError,
@@ -59,10 +51,7 @@ export class CommentsService {
       );
     }
 
-    // -------------------------------------------------------
-    // CHECK PARENT COMMENT IF THIS IS A REPLY
-    // -------------------------------------------------------
-
+    // check the parent comment when this is a reply
     let parentComment: {
       id: string;
       post_id: string;
@@ -107,10 +96,7 @@ export class CommentsService {
       parentComment = data;
     }
 
-    // -------------------------------------------------------
-    // CREATE COMMENT / REPLY
-    // -------------------------------------------------------
-
+    // create the comment or reply
     const {
       data,
       error,
@@ -132,19 +118,8 @@ export class CommentsService {
       );
     }
 
-    // =======================================================
-    // COMMENT / REPLY NOTIFICATION
-    // =======================================================
-
     if (parentComment) {
-      // -----------------------------------------------------
-      // REPLY NOTIFICATION
-      // -----------------------------------------------------
-      //
-      // User B replies to User A's comment.
-      // User A receives COMMENT_REPLY.
-      //
-
+      // notify the person whose comment was replied to
       await this.notificationsService
         .tryCreateNotification(
           parentComment.user_id,
@@ -156,14 +131,7 @@ export class CommentsService {
           'COMMENT',
         );
     } else {
-      // -----------------------------------------------------
-      // COMMENT NOTIFICATION
-      // -----------------------------------------------------
-      //
-      // User B comments on User A's post.
-      // User A receives POST_COMMENT.
-      //
-
+      // notify the post owner about the new comment
       await this.notificationsService
         .tryCreateNotification(
           post.user_id,
@@ -176,27 +144,7 @@ export class CommentsService {
         );
     }
 
-    // =======================================================
-    // @MENTION NOTIFICATION
-    // =======================================================
-    //
-    // Example:
-    //
-    // "@john what do you think?"
-    //
-    // Creates:
-    //
-    // MENTION_COMMENT
-    //
-    // Invalid usernames are ignored.
-    // Duplicate mentions are ignored.
-    // Self mentions are ignored.
-    //
-    // Notification failure does not break
-    // comment/reply creation.
-    //
-    // =======================================================
-
+    // notify users mentioned in the comment
     await this.notificationsService
       .notifyMentionedUsers(
         trimmedContent,
@@ -214,19 +162,12 @@ export class CommentsService {
     };
   }
 
-  // =========================================================
-  // GET COMMENTS
-  // =========================================================
-
   async getComments(
     postId: string,
     userId: string,
     pagination: PaginationDto,
   ) {
-    // -------------------------------------------------------
-    // CHECK WHETHER POST EXISTS
-    // -------------------------------------------------------
-
+    // check whether the post exists
     const {
       data: post,
       error: postError,
@@ -255,10 +196,6 @@ export class CommentsService {
       );
     }
 
-    // -------------------------------------------------------
-    // PAGINATION
-    // -------------------------------------------------------
-
     const page =
       pagination.page;
 
@@ -271,10 +208,7 @@ export class CommentsService {
     const to =
       from + limit - 1;
 
-    // -------------------------------------------------------
-    // GET COMMENTS
-    // -------------------------------------------------------
-
+    // get comments for the post
     const {
       data: comments,
       error,
@@ -356,19 +290,12 @@ export class CommentsService {
     };
   }
 
-  // =========================================================
-  // DELETE COMMENT / REPLY
-  // =========================================================
-
   async deleteComment(
     userId: string,
     postId: string,
     commentId: string,
   ) {
-    // -------------------------------------------------------
-    // CHECK COMMENT OWNERSHIP
-    // -------------------------------------------------------
-
+    // check that the user owns the comment
     const {
       data: comment,
       error: commentError,
@@ -407,10 +334,7 @@ export class CommentsService {
       );
     }
 
-    // -------------------------------------------------------
-    // FIND COMMENT + ALL REPLIES
-    // -------------------------------------------------------
-
+    // collect the comment and all its replies
     const idsToDelete: string[] = [
       commentId,
     ];
@@ -468,10 +392,7 @@ export class CommentsService {
         nextIds;
     }
 
-    // -------------------------------------------------------
-    // SOFT DELETE COMMENT TREE
-    // -------------------------------------------------------
-
+    // soft delete the whole comment tree
     const {
       data,
       error,
@@ -510,10 +431,6 @@ export class CommentsService {
         ) ?? null,
     };
   }
-
-  // =========================================================
-  // UPDATE COMMENT / REPLY
-  // =========================================================
 
   async updateComment(
     userId: string,

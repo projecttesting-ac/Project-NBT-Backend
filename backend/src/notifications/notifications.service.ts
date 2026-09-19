@@ -8,11 +8,6 @@ import { supabase } from '../config/supabase';
 
 @Injectable()
 export class NotificationsService {
-
-  // ============================================================
-  // CREATE NOTIFICATION
-  // ============================================================
-
   async createNotification(
     userId: string,
     type: string,
@@ -22,7 +17,7 @@ export class NotificationsService {
     entityId?: string,
     entityType?: string,
   ) {
-    // Never notify a user about their own action.
+    // don't notify users about their own actions
     if (actorId && actorId === userId) {
       return null;
     }
@@ -54,10 +49,6 @@ export class NotificationsService {
     return data;
   }
 
-  // ============================================================
-  // SAFE CREATE NOTIFICATION
-  // ============================================================
-
   async tryCreateNotification(
     userId: string,
     type: string,
@@ -78,6 +69,7 @@ export class NotificationsService {
         entityType,
       );
     } catch (error) {
+      // notification errors shouldn't break the main action
       console.error(
         'Notification creation failed:',
         error instanceof Error
@@ -89,61 +81,34 @@ export class NotificationsService {
     }
   }
 
-  // ============================================================
-  // NOTIFY MENTIONED USERS
-  // ============================================================
-  //
-  // Example:
-  //
-  // "Hello @john and @sarah"
-  //
-  // Creates:
-  //
-  // MENTION_POST
-  // or
-  // MENTION_COMMENT
-  //
-  // depending on entityType.
-  //
-  // ============================================================
-
   async notifyMentionedUsers(
     content: string,
     actorId: string,
     entityId: string,
-    entityType: 'POST' | 'COMMENT',
+    entityType:
+      | 'POST'
+      | 'COMMENT',
   ) {
-    if (!content || !content.trim()) {
+    if (
+      !content ||
+      !content.trim()
+    ) {
       return [];
     }
 
-    // ----------------------------------------------------------
-    // FIND @USERNAME MENTIONS
-    // ----------------------------------------------------------
-
+    // find usernames mentioned with @
     const mentionMatches =
       content.match(
         /@[a-zA-Z0-9_]+/g,
       ) ?? [];
 
-    if (mentionMatches.length === 0) {
+    if (
+      mentionMatches.length === 0
+    ) {
       return [];
     }
 
-    // ----------------------------------------------------------
-    // NORMALIZE USERNAMES
-    // ----------------------------------------------------------
-    //
-    // Your UsersService stores usernames in lowercase.
-    //
-    // Example:
-    //
-    // @John_Doe
-    // becomes
-    // john_doe
-    //
-    // ----------------------------------------------------------
-
+    // normalize usernames before searching
     const usernames = [
       ...new Set(
         mentionMatches.map(
@@ -160,10 +125,7 @@ export class NotificationsService {
       return [];
     }
 
-    // ----------------------------------------------------------
-    // FIND USERS
-    // ----------------------------------------------------------
-
+    // find the mentioned users
     const {
       data: users,
       error: usersError,
@@ -184,13 +146,12 @@ export class NotificationsService {
       return [];
     }
 
-    if (!users || users.length === 0) {
+    if (
+      !users ||
+      users.length === 0
+    ) {
       return [];
     }
-
-    // ----------------------------------------------------------
-    // NOTIFICATION DETAILS
-    // ----------------------------------------------------------
 
     const notificationType =
       entityType === 'POST'
@@ -207,15 +168,11 @@ export class NotificationsService {
         ? 'Someone mentioned you in a post.'
         : 'Someone mentioned you in a comment.';
 
-    const notifications: any[] = [];
+    const notifications: any[] =
+      [];
 
-    // ----------------------------------------------------------
-    // CREATE NOTIFICATIONS
-    // ----------------------------------------------------------
-
+    // create a notification for each mentioned user
     for (const user of users) {
-
-      // Never notify yourself.
       if (user.id === actorId) {
         continue;
       }
@@ -240,10 +197,6 @@ export class NotificationsService {
 
     return notifications;
   }
-
-  // ============================================================
-  // GET MY NOTIFICATIONS
-  // ============================================================
 
   async getMyNotifications(
     userId: string,
@@ -343,10 +296,6 @@ export class NotificationsService {
     };
   }
 
-  // ============================================================
-  // GET UNREAD COUNT
-  // ============================================================
-
   async getUnreadCount(
     userId: string,
   ) {
@@ -383,10 +332,6 @@ export class NotificationsService {
         count ?? 0,
     };
   }
-
-  // ============================================================
-  // MARK ONE NOTIFICATION AS READ
-  // ============================================================
 
   async markAsRead(
     userId: string,
@@ -430,10 +375,6 @@ export class NotificationsService {
     };
   }
 
-  // ============================================================
-  // MARK ALL NOTIFICATIONS AS READ
-  // ============================================================
-
   async markAllAsRead(
     userId: string,
   ) {
@@ -465,10 +406,6 @@ export class NotificationsService {
         'All notifications marked as read.',
     };
   }
-
-  // ============================================================
-  // DELETE NOTIFICATION
-  // ============================================================
 
   async deleteNotification(
     userId: string,

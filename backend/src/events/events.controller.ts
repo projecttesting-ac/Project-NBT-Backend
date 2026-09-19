@@ -13,6 +13,7 @@ import {
 } from '@nestjs/common';
 
 import { Throttle } from '@nestjs/throttler';
+
 import { FileInterceptor } from '@nestjs/platform-express';
 
 import { UpdateEventDto } from './dto/update-event.dto';
@@ -21,7 +22,6 @@ import { UpdateEventStatusDto } from './dto/update-event-status.dto';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
-
 import { PaginationDto } from '../common/dto/pagination.dto';
 
 import { EventsService } from './events.service';
@@ -31,11 +31,6 @@ export class EventsController {
   constructor(
     private readonly eventsService: EventsService,
   ) {}
-
-  // =========================================================
-  // UPLOAD EVENT POSTER
-  // 20 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -56,16 +51,12 @@ export class EventsController {
     @CurrentUser() user: any,
     @UploadedFile() file: any,
   ) {
+    // upload the event poster
     return this.eventsService.uploadPoster(
       user.id,
       file,
     );
   }
-
-  // =========================================================
-  // CREATE EVENT
-  // 20 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -79,16 +70,12 @@ export class EventsController {
     @CurrentUser() user: any,
     @Body() dto: CreateEventDto,
   ) {
+    // create a new event
     return this.eventsService.create(
       user.id,
       dto,
     );
   }
-
-  // =========================================================
-  // GET ALL EVENTS
-  // 20 requests / 1 minute
-  // =========================================================
 
   @Throttle({
     default: {
@@ -100,15 +87,11 @@ export class EventsController {
   getAllEvents(
     @Query() pagination: PaginationDto,
   ) {
+    // get events with pagination
     return this.eventsService.findAll(
       pagination,
     );
   }
-
-  // =========================================================
-  // GET SINGLE EVENT
-  // 20 requests / 1 minute
-  // =========================================================
 
   @Throttle({
     default: {
@@ -120,13 +103,9 @@ export class EventsController {
   getEventById(
     @Param('id') id: string,
   ) {
+    // get a single event
     return this.eventsService.findOne(id);
   }
-
-  // =========================================================
-  // UPDATE EVENT
-  // 20 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -141,17 +120,13 @@ export class EventsController {
     @Param('id') id: string,
     @Body() dto: UpdateEventDto,
   ) {
+    // update event details
     return this.eventsService.update(
       user.id,
       id,
       dto,
     );
   }
-
-  // =========================================================
-  // DELETE EVENT
-  // 20 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -165,16 +140,12 @@ export class EventsController {
     @CurrentUser() user: any,
     @Param('id') id: string,
   ) {
+    // delete the event
     return this.eventsService.remove(
       user.id,
       id,
     );
   }
-
-  // =========================================================
-  // UPDATE EVENT STATUS
-  // 20 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -189,6 +160,7 @@ export class EventsController {
     @Param('id') id: string,
     @Body() dto: UpdateEventStatusDto,
   ) {
+    // change the event status
     return this.eventsService.updateStatus(
       user.id,
       id,

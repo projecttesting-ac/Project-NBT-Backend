@@ -17,22 +17,18 @@ export class ConversationsService {
     private readonly mediaService: MediaService,
   ) {}
 
-  // =========================================================
-  // CREATE CONVERSATION
-  // =========================================================
-
   async createConversation(
     userId: string,
     targetUserId: string,
   ) {
-    // Cannot create a conversation with yourself
+    // don't allow users to message themselves
     if (userId === targetUserId) {
       throw new BadRequestException(
         'You cannot create a conversation with yourself.',
       );
     }
 
-    // Check that target user exists
+    // check if the target user exists
     const {
       data: targetUser,
       error: targetUserError,
@@ -54,7 +50,7 @@ export class ConversationsService {
       );
     }
 
-    // Check whether a direct conversation already exists
+    // check if a conversation already exists between both users
     const {
       data: myMemberships,
       error: myMembershipError,
@@ -107,7 +103,7 @@ export class ConversationsService {
       }
     }
 
-    // Create conversation
+    // create the conversation
     const {
       data: conversation,
       error: conversationError,
@@ -126,7 +122,7 @@ export class ConversationsService {
       );
     }
 
-    // Add both users as members
+    // add both users to the conversation
     const { error: membersError } =
       await supabase
         .from('conversation_members')
@@ -143,8 +139,7 @@ export class ConversationsService {
           },
         ]);
 
-    // If adding members fails,
-    // remove the conversation
+    // remove the conversation if adding members fails
     if (membersError) {
       await supabase
         .from('conversations')
@@ -164,25 +159,19 @@ export class ConversationsService {
     };
   }
 
-  // =========================================================
-  // CREATE CONVERSATION + SEND MESSAGE + OPTIONAL MEDIA
-  // =========================================================
-
   async createConversationAndSendMessage(
     userId: string,
     targetUserId: string,
     dto: SendMessageDto,
     file?: any,
   ) {
-    // 1. Find existing conversation
-    //    or create a new one
+    // find an existing conversation or create one
     const conversationResult =
       await this.createConversation(
         userId,
         targetUserId,
       );
 
-    // 2. Get conversation ID
     const conversationId =
       conversationResult.conversationId ??
       conversationResult.conversation?.id;
@@ -193,7 +182,7 @@ export class ConversationsService {
       );
     }
 
-    // 3. Send message
+    // send the first message
     const messageResult =
       await this.sendMessage(
         userId,
@@ -202,7 +191,6 @@ export class ConversationsService {
         file,
       );
 
-    // 4. Return conversation + message
     return {
       success: true,
       message:
@@ -215,132 +203,101 @@ export class ConversationsService {
     };
   }
 
-  // =========================================================
-  // GET CONVERSATIONS
-  // =========================================================
-
   async getConversations(
-  userId: string,
-  pagination: PaginationDto,
-) {
-  // =========================================================
-  // PAGINATION
-  // =========================================================
+    userId: string,
+    pagination: PaginationDto,
+  ) {
+    const page = pagination.page;
+    const limit = pagination.limit;
 
-  const page = pagination.page;
-  const limit = pagination.limit;
-
-  const from = (page - 1) * limit;
-  const to = from + limit - 1;
-
-  // =========================================================
-  // GET USER'S CONVERSATIONS WITH PAGINATION
-  // =========================================================
-
-  const {
-    data: memberships,
-    error: membershipError,
-    count: total,
-  } = await supabase
-    .from('conversation_members')
-    .select('conversation_id', {
-      count: 'exact',
-    })
-    .eq('user_id', userId)
-    .range(from, to);
-
-  if (membershipError) {
-    throw new BadRequestException(
-      membershipError.message,
-    );
-  }
-
-  // =========================================================
-  // NO CONVERSATIONS
-  // =========================================================
-
-  if (!memberships || memberships.length === 0) {
-    return {
-      success: true,
-      conversations: [],
-      pagination: {
-        page,
-        limit,
-        total: total ?? 0,
-        totalPages:
-          total && total > 0
-            ? Math.ceil(total / limit)
-            : 0,
-        hasNextPage: false,
-        hasPreviousPage: page > 1,
-      },
-    };
-  }
-
-  // =========================================================
-  // GET CONVERSATION DATA
-  // =========================================================
-
-  const conversations: any[] = [];
-
-  for (const membership of memberships) {
-    // -------------------------------------------------------
-    // Conversation details
-    // -------------------------------------------------------
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
 
     const {
-      data: conversation,
-      error: conversationError,
-    } = await supabase
-      .from('conversations')
-      .select('*')
-      .eq(
-        'id',
-        membership.conversation_id,
-      )
-      .single();
-
-    if (
-      conversationError ||
-      !conversation
-    ) {
-      continue;
-    }
-
-    // -------------------------------------------------------
-    // Other participant
-    // -------------------------------------------------------
-
-    const {
-      data: otherMember,
-      error: memberError,
+      data: memberships,
+      error: membershipError,
+      count: total,
     } = await supabase
       .from('conversation_members')
-      .select('user_id')
-      .eq(
-        'conversation_id',
-        membership.conversation_id,
-      )
-      .neq('user_id', userId)
-      .maybeSingle();
+      .select('conversation_id', {
+        count: 'exact',
+      })
+      .eq('user_id', userId)
+      .range(from, to);
 
-    if (memberError) {
-      continue;
+    if (membershipError) {
+      throw new BadRequestException(
+        membershipError.message,
+      );
     }
 
-    let user: any = null;
+    if (!memberships || memberships.length === 0) {
+      return {
+        success: true,
+        conversations: [],
+        pagination: {
+          page,
+          limit,
+          total: total ?? 0,
+          totalPages:
+            total && total > 0
+              ? Math.ceil(total / limit)
+              : 0,
+          hasNextPage: false,
+          hasPreviousPage: page > 1,
+        },
+      };
+    }
 
-    // -------------------------------------------------------
-    // Other user's profile
-    // -------------------------------------------------------
+    const conversations: any[] = [];
 
-    if (otherMember) {
+    for (const membership of memberships) {
       const {
-        data: otherUser,
-        error: userError,
+        data: conversation,
+        error: conversationError,
       } = await supabase
-        .from('users')
-        .select(`
+        .from('conversations')
+        .select('*')
+        .eq(
+          'id',
+          membership.conversation_id,
+        )
+        .single();
+
+      if (
+        conversationError ||
+        !conversation
+      ) {
+        continue;
+      }
+
+      // get the other person in the conversation
+      const {
+        data: otherMember,
+        error: memberError,
+      } = await supabase
+        .from('conversation_members')
+        .select('user_id')
+        .eq(
+          'conversation_id',
+          membership.conversation_id,
+        )
+        .neq('user_id', userId)
+        .maybeSingle();
+
+      if (memberError) {
+        continue;
+      }
+
+      let user: any = null;
+
+      if (otherMember) {
+        const {
+          data: otherUser,
+          error: userError,
+        } = await supabase
+          .from('users')
+          .select(`
           id,
           display_name,
           username,
@@ -348,160 +305,133 @@ export class ConversationsService {
           is_online,
           last_seen
         `)
-        .eq(
-          'id',
-          otherMember.user_id,
-        )
-        .single();
+          .eq(
+            'id',
+            otherMember.user_id,
+          )
+          .single();
 
-      if (!userError) {
-        user = otherUser;
+        if (!userError) {
+          user = otherUser;
+        }
       }
+
+      // get the latest message
+      const {
+        data: lastMessage,
+      } = await supabase
+        .from('messages')
+        .select(
+          'content, created_at',
+        )
+        .eq(
+          'conversation_id',
+          membership.conversation_id,
+        )
+        .order('created_at', {
+          ascending: false,
+        })
+        .limit(1)
+        .maybeSingle();
+
+      // count unread messages
+      const {
+        count: unreadCount,
+      } = await supabase
+        .from('messages')
+        .select('*', {
+          count: 'exact',
+          head: true,
+        })
+        .eq(
+          'conversation_id',
+          membership.conversation_id,
+        )
+        .eq('is_read', false)
+        .neq('sender_id', userId);
+
+      conversations.push({
+        id: conversation.id,
+        type: conversation.type,
+        user,
+        lastMessage:
+          lastMessage?.content ?? null,
+        lastMessageTime:
+          lastMessage?.created_at ?? null,
+        unreadCount:
+          unreadCount ?? 0,
+      });
     }
 
-    // -------------------------------------------------------
-    // Last message
-    // -------------------------------------------------------
+    const totalCount = total ?? 0;
+
+    const totalPages =
+      totalCount > 0
+        ? Math.ceil(
+            totalCount / limit,
+          )
+        : 0;
+
+    return {
+      success: true,
+
+      conversations,
+
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages,
+        hasNextPage:
+          page < totalPages,
+        hasPreviousPage:
+          page > 1,
+      },
+    };
+  }
+
+  async getMessages(
+    userId: string,
+    conversationId: string,
+    pagination: PaginationDto,
+  ) {
+    // make sure the user belongs to the conversation
+    const {
+      data: membership,
+      error: membershipError,
+    } = await supabase
+      .from('conversation_members')
+      .select('conversation_id')
+      .eq('conversation_id', conversationId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (membershipError) {
+      throw new BadRequestException(
+        membershipError.message,
+      );
+    }
+
+    if (!membership) {
+      throw new BadRequestException(
+        'You are not a member of this conversation.',
+      );
+    }
+
+    const page = pagination.page;
+    const limit = pagination.limit;
+
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
 
     const {
-      data: lastMessage,
+      data: messages,
+      error,
+      count: total,
     } = await supabase
       .from('messages')
       .select(
-        'content, created_at',
-      )
-      .eq(
-        'conversation_id',
-        membership.conversation_id,
-      )
-      .order('created_at', {
-        ascending: false,
-      })
-      .limit(1)
-      .maybeSingle();
-
-    // -------------------------------------------------------
-    // Unread count
-    // -------------------------------------------------------
-
-    const {
-      count: unreadCount,
-    } = await supabase
-      .from('messages')
-      .select('*', {
-        count: 'exact',
-        head: true,
-      })
-      .eq(
-        'conversation_id',
-        membership.conversation_id,
-      )
-      .eq('is_read', false)
-      .neq('sender_id', userId);
-
-    // -------------------------------------------------------
-    // Add conversation
-    // -------------------------------------------------------
-
-    conversations.push({
-      id: conversation.id,
-      type: conversation.type,
-      user,
-      lastMessage:
-        lastMessage?.content ?? null,
-      lastMessageTime:
-        lastMessage?.created_at ?? null,
-      unreadCount:
-        unreadCount ?? 0,
-    });
-  }
-
-  // =========================================================
-  // PAGINATION METADATA
-  // =========================================================
-
-  const totalCount = total ?? 0;
-
-  const totalPages =
-    totalCount > 0
-      ? Math.ceil(
-          totalCount / limit,
-        )
-      : 0;
-
-  return {
-    success: true,
-
-    conversations,
-
-    pagination: {
-      page,
-      limit,
-      total: totalCount,
-      totalPages,
-      hasNextPage:
-        page < totalPages,
-      hasPreviousPage:
-        page > 1,
-    },
-  };
-}
-
-  // =========================================================
-// GET MESSAGES
-// =========================================================
-
-async getMessages(
-  userId: string,
-  conversationId: string,
-  pagination: PaginationDto,
-) {
-  // 1. Make sure the user belongs
-  //    to this conversation
-  const {
-    data: membership,
-    error: membershipError,
-  } = await supabase
-    .from('conversation_members')
-    .select('conversation_id')
-    .eq('conversation_id', conversationId)
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (membershipError) {
-    throw new BadRequestException(
-      membershipError.message,
-    );
-  }
-
-  if (!membership) {
-    throw new BadRequestException(
-      'You are not a member of this conversation.',
-    );
-  }
-
-  // =========================================================
-  // 2. PAGINATION
-  // =========================================================
-
-  const page = pagination.page;
-  const limit = pagination.limit;
-
-  const from = (page - 1) * limit;
-  const to = from + limit - 1;
-
-  // =========================================================
-  // 3. GET MESSAGES WITH PAGINATION
-  // =========================================================
-
-  const {
-    data: messages,
-    error,
-    count: total,
-  } = await supabase
-    .from('messages')
-    .select(
-      `
+        `
         id,
         sender_id,
         content,
@@ -529,56 +459,49 @@ async getMessages(
           created_at
         )
       `,
-      {
-        count: 'exact',
-      },
-    )
-    .eq('conversation_id', conversationId)
-    .order('created_at', {
-      ascending: true,
-    })
-    .range(from, to);
+        {
+          count: 'exact',
+        },
+      )
+      .eq('conversation_id', conversationId)
+      .order('created_at', {
+        ascending: true,
+      })
+      .range(from, to);
 
-  if (error) {
-    throw new BadRequestException(
-      error.message,
-    );
-  }
+    if (error) {
+      throw new BadRequestException(
+        error.message,
+      );
+    }
 
-  // =========================================================
-  // 4. FIND OTHER PARTICIPANT
-  // =========================================================
-
-  const {
-    data: otherMember,
-    error: memberError,
-  } = await supabase
-    .from('conversation_members')
-    .select('user_id')
-    .eq('conversation_id', conversationId)
-    .neq('user_id', userId)
-    .maybeSingle();
-
-  if (memberError) {
-    throw new BadRequestException(
-      memberError.message,
-    );
-  }
-
-  let user: any = null;
-
-  // =========================================================
-  // 5. GET OTHER USER'S PROFILE
-  // =========================================================
-
-  if (otherMember) {
+    // get the other participant
     const {
-      data: otherUser,
-      error: userError,
+      data: otherMember,
+      error: memberError,
     } = await supabase
-      .from('users')
-      .select(
-        `
+      .from('conversation_members')
+      .select('user_id')
+      .eq('conversation_id', conversationId)
+      .neq('user_id', userId)
+      .maybeSingle();
+
+    if (memberError) {
+      throw new BadRequestException(
+        memberError.message,
+      );
+    }
+
+    let user: any = null;
+
+    if (otherMember) {
+      const {
+        data: otherUser,
+        error: userError,
+      } = await supabase
+        .from('users')
+        .select(
+          `
           id,
           display_name,
           username,
@@ -586,191 +509,175 @@ async getMessages(
           is_online,
           last_seen
         `,
-      )
-      .eq('id', otherMember.user_id)
-      .single();
+        )
+        .eq('id', otherMember.user_id)
+        .single();
 
-    if (userError) {
-      throw new BadRequestException(
-        userError.message,
-      );
+      if (userError) {
+        throw new BadRequestException(
+          userError.message,
+        );
+      }
+
+      user = otherUser;
     }
 
-    user = otherUser;
-  }
+    // create signed URLs and format each message
+    const formattedMessages =
+      await Promise.all(
+        (messages ?? []).map(
+          async (message) => {
+            const media =
+              await Promise.all(
+                (
+                  message.message_media ??
+                  []
+                ).map(
+                  async (
+                    attachment: any,
+                  ) => {
+                    const mediaFile =
+                      attachment.media_files;
 
-  // =========================================================
-  // 6. GENERATE SIGNED URLS + FORMAT MESSAGES
-  // =========================================================
+                    if (!mediaFile) {
+                      return {
+                        mediaId:
+                          attachment.media_id,
+                        url: null,
+                      };
+                    }
 
-  const formattedMessages =
-    await Promise.all(
-      (messages ?? []).map(
-        async (message) => {
-          const media =
-            await Promise.all(
-              (
-                message.message_media ??
-                []
-              ).map(
-                async (
-                  attachment: any,
-                ) => {
-                  const mediaFile =
-                    attachment.media_files;
+                    const {
+                      data:
+                        signedUrlData,
+                      error:
+                        signedUrlError,
+                    } =
+                      await supabase.storage
+                        .from('media')
+                        .createSignedUrl(
+                          mediaFile.storage_path,
+                          60 * 60,
+                        );
 
-                  if (!mediaFile) {
+                    if (signedUrlError) {
+                      throw new BadRequestException(
+                        signedUrlError.message,
+                      );
+                    }
+
                     return {
                       mediaId:
                         attachment.media_id,
-                      url: null,
+                      id: mediaFile.id,
+                      originalName:
+                        mediaFile.original_name,
+                      mimeType:
+                        mediaFile.mime_type,
+                      sizeBytes:
+                        mediaFile.size_bytes,
+                      url:
+                        signedUrlData
+                          ?.signedUrl ??
+                        null,
+                      expiresIn: 3600,
                     };
-                  }
+                  },
+                ),
+              );
 
-                  const {
-                    data:
-                      signedUrlData,
-                    error:
-                      signedUrlError,
-                  } =
-                    await supabase.storage
-                      .from('media')
-                      .createSignedUrl(
-                        mediaFile.storage_path,
-                        60 * 60,
-                      );
+            const reactions =
+              message.message_reactions ??
+              [];
 
-                  if (signedUrlError) {
-                    throw new BadRequestException(
-                      signedUrlError.message,
-                    );
-                  }
+            const reactionCounts:
+              Record<string, number> = {};
 
-                  return {
-                    mediaId:
-                      attachment.media_id,
-                    id: mediaFile.id,
-                    originalName:
-                      mediaFile.original_name,
-                    mimeType:
-                      mediaFile.mime_type,
-                    sizeBytes:
-                      mediaFile.size_bytes,
-                    url:
-                      signedUrlData
-                        ?.signedUrl ??
-                      null,
-                    expiresIn: 3600,
-                  };
-                },
-              ),
-            );
+            for (
+              const reaction of reactions
+            ) {
+              reactionCounts[
+                reaction.reaction
+              ] =
+                (
+                  reactionCounts[
+                    reaction.reaction
+                  ] ?? 0
+                ) + 1;
+            }
 
-          // Format reactions
-          const reactions =
-            message.message_reactions ??
-            [];
+            const formattedReactions =
+              Object.entries(
+                reactionCounts,
+              ).map(
+                ([reaction, count]) => ({
+                  reaction,
+                  count,
+                  reactedByMe:
+                    reactions.some(
+                      (item: any) =>
+                        item.user_id ===
+                          userId &&
+                        item.reaction ===
+                          reaction,
+                    ),
+                }),
+              );
 
-          const reactionCounts:
-            Record<string, number> = {};
+            return {
+              id: message.id,
+              senderId:
+                message.sender_id,
+              content:
+                message.content,
+              createdAt:
+                message.created_at,
+              isRead:
+                message.is_read,
+              deliveredAt:
+                message.delivered_at,
+              seenAt:
+                message.seen_at,
+              replyToMessageId:
+                message.reply_to_message_id,
+              media,
+              reactions:
+                formattedReactions,
+            };
+          },
+        ),
+      );
 
-          for (
-            const reaction of reactions
-          ) {
-            reactionCounts[
-              reaction.reaction
-            ] =
-              (
-                reactionCounts[
-                  reaction.reaction
-                ] ?? 0
-              ) + 1;
-          }
+    const totalCount = total ?? 0;
 
-          const formattedReactions =
-            Object.entries(
-              reactionCounts,
-            ).map(
-              ([reaction, count]) => ({
-                reaction,
-                count,
-                reactedByMe:
-                  reactions.some(
-                    (item: any) =>
-                      item.user_id ===
-                        userId &&
-                      item.reaction ===
-                        reaction,
-                  ),
-              }),
-            );
+    const totalPages =
+      totalCount > 0
+        ? Math.ceil(
+            totalCount / limit,
+          )
+        : 0;
 
-          return {
-            id: message.id,
-            senderId:
-              message.sender_id,
-            content:
-              message.content,
-            createdAt:
-              message.created_at,
-            isRead:
-              message.is_read,
-            deliveredAt:
-              message.delivered_at,
-            seenAt:
-              message.seen_at,
-            replyToMessageId:
-              message.reply_to_message_id,
-            media,
-            reactions:
-              formattedReactions,
-          };
-        },
-      ),
-    );
+    return {
+      success: true,
 
-  // =========================================================
-  // 7. PAGINATION METADATA
-  // =========================================================
+      user,
 
-  const totalCount = total ?? 0;
+      messages: formattedMessages,
 
-  const totalPages =
-    totalCount > 0
-      ? Math.ceil(
-          totalCount / limit,
-        )
-      : 0;
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages,
 
-  // =========================================================
-  // 8. RETURN
-  // =========================================================
+        hasNextPage:
+          page < totalPages,
 
-  return {
-    success: true,
-
-    user,
-
-    messages: formattedMessages,
-
-    pagination: {
-      page,
-      limit,
-      total: totalCount,
-      totalPages,
-
-      hasNextPage:
-        page < totalPages,
-
-      hasPreviousPage:
-        page > 1,
-    },
-  };
-}
-
-  // =========================================================
-  // SEND MESSAGE
-  // =========================================================
+        hasPreviousPage:
+          page > 1,
+      },
+    };
+  }
 
   async sendMessage(
     userId: string,
@@ -778,8 +685,7 @@ async getMessages(
     dto: SendMessageDto,
     file?: any,
   ) {
-    // 1. Make sure user belongs
-    //    to conversation
+    // make sure the user belongs to the conversation
     const {
       data: membership,
       error: membershipError,
@@ -805,7 +711,7 @@ async getMessages(
       );
     }
 
-    // 2. Create message
+    // create the message
     const {
       data: message,
       error: messageError,
@@ -828,10 +734,6 @@ async getMessages(
       );
     }
 
-    // =====================================================
-    // 3. Upload optional file
-    // =====================================================
-
     let uploadedMediaId:
       | string
       | null = null;
@@ -853,7 +755,7 @@ async getMessages(
           );
         }
 
-        // Attach uploaded media
+        // attach the uploaded media to the message
         const {
           error: attachmentError,
         } = await supabase
@@ -865,7 +767,7 @@ async getMessages(
           });
 
         if (attachmentError) {
-          // Delete uploaded storage file
+          // clean up the uploaded file if attachment fails
           const {
             data: mediaFile,
           } = await supabase
@@ -887,7 +789,7 @@ async getMessages(
               ]);
           }
 
-          // Delete media database record
+          // remove the media record as well
           await supabase
             .from('media_files')
             .delete()
@@ -901,8 +803,7 @@ async getMessages(
           );
         }
       } catch (error) {
-        // Delete message because
-        // media operation failed
+        // remove the message if media upload fails
         await supabase
           .from('messages')
           .delete()
@@ -924,10 +825,7 @@ async getMessages(
       }
     }
 
-    // =====================================================
-    // 4. Attach existing mediaIds
-    // =====================================================
-
+    // attach media IDs that were already uploaded
     if (
       dto.mediaIds &&
       dto.mediaIds.length > 0
@@ -948,7 +846,6 @@ async getMessages(
         .insert(attachments);
 
       if (attachmentError) {
-        // Delete message
         await supabase
           .from('messages')
           .delete()
@@ -963,10 +860,7 @@ async getMessages(
       }
     }
 
-    // =====================================================
-    // 5. Get attached media
-    // =====================================================
-
+    // get all media attached to the message
     const {
       data: media,
       error: mediaError,
@@ -993,10 +887,6 @@ async getMessages(
       );
     }
 
-    // =====================================================
-    // 6. Return message + media
-    // =====================================================
-
     return {
       success: true,
       message:
@@ -1008,15 +898,11 @@ async getMessages(
     };
   }
 
-  // =========================================================
-  // MARK ALL MESSAGES AS READ
-  // =========================================================
-
   async markMessagesAsRead(
     userId: string,
     conversationId: string,
   ) {
-    // Verify membership
+    // check that the user belongs to the conversation
     const {
       data: membership,
       error: membershipError,
@@ -1068,16 +954,12 @@ async getMessages(
     };
   }
 
-  // =========================================================
-  // MARK MESSAGE AS DELIVERED
-  // =========================================================
-
   async markMessageAsDelivered(
     userId: string,
     conversationId: string,
     messageId: string,
   ) {
-    // Verify membership
+    // check that the user belongs to the conversation
     const {
       data: membership,
       error: membershipError,
@@ -1103,7 +985,7 @@ async getMessages(
       );
     }
 
-    // Mark message delivered
+    // mark the message as delivered
     const {
       data,
       error,
@@ -1142,16 +1024,12 @@ async getMessages(
     };
   }
 
-  // =========================================================
-  // MARK MESSAGE AS SEEN
-  // =========================================================
-
   async markMessageAsSeen(
     userId: string,
     conversationId: string,
     messageId: string,
   ) {
-    // Verify membership
+    // check that the user belongs to the conversation
     const {
       data: membership,
       error: membershipError,
@@ -1177,7 +1055,7 @@ async getMessages(
       );
     }
 
-    // Mark message seen
+    // mark the message as seen
     const {
       data,
       error,
@@ -1219,17 +1097,13 @@ async getMessages(
     };
   }
 
-  // =========================================================
-  // UPDATE MESSAGE
-  // =========================================================
-
   async updateMessage(
     userId: string,
     conversationId: string,
     messageId: string,
     dto: UpdateMessageDto,
   ) {
-    // Verify membership
+    // check that the user belongs to the conversation
     const {
       data: membership,
       error: membershipError,
@@ -1255,7 +1129,7 @@ async getMessages(
       );
     }
 
-    // Update only user's own message
+    // only update messages sent by the current user
     const {
       data,
       error,
@@ -1293,16 +1167,12 @@ async getMessages(
     };
   }
 
-  // =========================================================
-  // DELETE MESSAGE
-  // =========================================================
-
   async deleteMessage(
     userId: string,
     conversationId: string,
     messageId: string,
   ) {
-    // 1. Verify membership
+    // check that the user belongs to the conversation
     const {
       data: membership,
       error: membershipError,
@@ -1328,8 +1198,7 @@ async getMessages(
       );
     }
 
-    // 2. Get attached media
-    //    BEFORE deleting message
+    // get attached media before deleting the message
     const {
       data: attachments,
       error: attachmentError,
@@ -1353,7 +1222,7 @@ async getMessages(
       );
     }
 
-    // 3. Delete only user's own message
+    // delete only the current user's message
     const {
       data,
       error,
@@ -1381,7 +1250,7 @@ async getMessages(
       );
     }
 
-    // 4. Clean up media
+    // clean up media that is no longer used
     for (
       const attachment of
         attachments ?? []
@@ -1396,8 +1265,6 @@ async getMessages(
         continue;
       }
 
-      // Check whether media is
-      // still attached elsewhere
       const {
         count: referenceCount,
         error: referenceError,
@@ -1418,14 +1285,13 @@ async getMessages(
         );
       }
 
-      // Still being used
       if (
         (referenceCount ?? 0) > 0
       ) {
         continue;
       }
 
-      // Delete Storage file
+      // remove the file from storage
       const {
         error: storageError,
       } =
@@ -1441,7 +1307,7 @@ async getMessages(
         );
       }
 
-      // Delete media DB record
+      // remove the media record
       const {
         error: mediaDeleteError,
       } = await supabase
@@ -1467,17 +1333,13 @@ async getMessages(
     };
   }
 
-  // =========================================================
-  // FORWARD MESSAGE
-  // =========================================================
-
   async forwardMessage(
     userId: string,
     conversationId: string,
     messageId: string,
     dto: ForwardMessageDto,
   ) {
-    // 1. Check source membership
+    // check membership in the source conversation
     const {
       data: sourceMembership,
       error: sourceMembershipError,
@@ -1503,7 +1365,7 @@ async getMessages(
       );
     }
 
-    // 2. Get original message
+    // get the original message
     const {
       data: originalMessage,
       error: messageError,
@@ -1538,7 +1400,7 @@ async getMessages(
       );
     }
 
-    // 3. Check target membership
+    // check membership in the target conversation
     const {
       data: targetMembership,
       error: targetMembershipError,
@@ -1564,7 +1426,7 @@ async getMessages(
       );
     }
 
-    // 4. Create forwarded message
+    // create the forwarded message
     const {
       data: forwardedMessage,
       error: insertError,
@@ -1587,7 +1449,6 @@ async getMessages(
       );
     }
 
-    // 5. Forward media
     const mediaAttachments =
       originalMessage.message_media ??
       [];
@@ -1626,7 +1487,7 @@ async getMessages(
       }
     }
 
-    // 6. Get forwarded media
+    // get the media attached to the forwarded message
     const {
       data: media,
       error: mediaFetchError,
@@ -1664,17 +1525,13 @@ async getMessages(
     };
   }
 
-  // =========================================================
-  // ADD / CHANGE REACTION
-  // =========================================================
-
   async addReaction(
     userId: string,
     conversationId: string,
     messageId: string,
     reaction: string,
   ) {
-    // 1. Verify membership
+    // check that the user belongs to the conversation
     const {
       data: membership,
       error: membershipError,
@@ -1700,7 +1557,7 @@ async getMessages(
       );
     }
 
-    // 2. Verify message
+    // make sure the message exists
     const {
       data: message,
       error: messageError,
@@ -1729,7 +1586,7 @@ async getMessages(
       );
     }
 
-    // 3. Add/update reaction
+    // add or update the user's reaction
     const {
       data,
       error,
@@ -1764,16 +1621,12 @@ async getMessages(
     };
   }
 
-  // =========================================================
-  // REMOVE REACTION
-  // =========================================================
-
   async removeReaction(
     userId: string,
     conversationId: string,
     messageId: string,
   ) {
-    // 1. Verify membership
+    // check that the user belongs to the conversation
     const {
       data: membership,
       error: membershipError,
@@ -1799,7 +1652,7 @@ async getMessages(
       );
     }
 
-    // 2. Delete user's reaction
+    // remove the user's reaction
     const {
       data,
       error,

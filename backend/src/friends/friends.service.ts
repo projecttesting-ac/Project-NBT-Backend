@@ -13,10 +13,6 @@ export class FriendsService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
-  // =========================================================
-  // SEND FRIEND REQUEST
-  // =========================================================
-
   async sendFriendRequest(
     senderId: string,
     receiverId: string,
@@ -27,7 +23,7 @@ export class FriendsService {
       );
     }
 
-    // Check receiver exists
+    // check if the receiver exists
     const {
       data: receiver,
       error: receiverError,
@@ -49,7 +45,7 @@ export class FriendsService {
       );
     }
 
-    // Check already friends
+    // check if they are already friends
     const {
       data: friendship,
       error: friendshipError,
@@ -74,7 +70,7 @@ export class FriendsService {
       );
     }
 
-    // Check pending request in either direction
+    // check for an existing pending request
     const {
       data: existingRequest,
       error: requestError,
@@ -108,7 +104,7 @@ export class FriendsService {
       );
     }
 
-    // Create request
+    // create the friend request
     const {
       data: request,
       error: insertError,
@@ -128,7 +124,7 @@ export class FriendsService {
       );
     }
 
-    // Create notification for receiver
+    // notify the receiver
     try {
       await this.notificationsService.createNotification(
         receiverId,
@@ -140,8 +136,7 @@ export class FriendsService {
         'friend_request',
       );
     } catch (notificationError) {
-      // The friend request itself was successful.
-      // Notification failure should not fail the request.
+      // notification failure should not fail the request
       console.error(
         'Failed to create friend request notification:',
         notificationError,
@@ -155,10 +150,6 @@ export class FriendsService {
       request,
     };
   }
-
-  // ===========================================================
-  // GET RECEIVED REQUESTS
-  // ===========================================================
 
   async getReceivedRequests(userId: string) {
     const {
@@ -193,7 +184,7 @@ export class FriendsService {
       };
     }
 
-    // Get sender profiles
+    // get profiles of the senders
     const senderIds = requests.map(
       (request) => request.sender_id,
     );
@@ -241,10 +232,6 @@ export class FriendsService {
     };
   }
 
-  // =========================================================
-  // ACCEPT FRIEND REQUEST
-  // =========================================================
-
   async acceptFriendRequest(
     userId: string,
     requestId: string,
@@ -272,7 +259,7 @@ export class FriendsService {
       );
     }
 
-    // Only receiver can accept
+    // only the receiver can accept
     if (request.receiver_id !== userId) {
       throw new ConflictException(
         'You cannot accept this friend request.',
@@ -285,7 +272,7 @@ export class FriendsService {
       );
     }
 
-    // Create first friendship
+    // create the first friendship
     const {
       error: firstError,
     } = await supabase
@@ -301,7 +288,7 @@ export class FriendsService {
       );
     }
 
-    // Create reverse friendship
+    // create the reverse friendship
     const {
       error: secondError,
     } = await supabase
@@ -312,7 +299,7 @@ export class FriendsService {
       });
 
     if (secondError) {
-      // Roll back first friendship
+      // remove the first row if the second one fails
       await supabase
         .from('friendships')
         .delete()
@@ -330,7 +317,7 @@ export class FriendsService {
       );
     }
 
-    // Mark request accepted
+    // mark the request as accepted
     const {
       error: updateError,
     } = await supabase
@@ -348,7 +335,7 @@ export class FriendsService {
       );
     }
 
-    // Notify original sender
+    // notify the original sender
     try {
       await this.notificationsService.createNotification(
         request.sender_id,
@@ -360,8 +347,7 @@ export class FriendsService {
         'friend_request',
       );
     } catch (notificationError) {
-      // Friendship acceptance itself was successful.
-      // Notification failure should not fail the action.
+      // notification failure should not fail the action
       console.error(
         'Failed to create friend request accepted notification:',
         notificationError,
@@ -374,10 +360,6 @@ export class FriendsService {
         'Friend request accepted successfully.',
     };
   }
-
-  // =========================================================
-  // DECLINE FRIEND REQUEST
-  // =========================================================
 
   async declineFriendRequest(
     userId: string,
@@ -441,10 +423,6 @@ export class FriendsService {
         'Friend request declined successfully.',
     };
   }
-
-  // =========================================================
-  // GET SENT REQUESTS
-  // =========================================================
 
   async getSentRequests(userId: string) {
     const {
@@ -526,10 +504,6 @@ export class FriendsService {
     };
   }
 
-  // =========================================================
-  // CANCEL SENT REQUEST
-  // =========================================================
-
   async cancelFriendRequest(
     userId: string,
     requestId: string,
@@ -588,10 +562,6 @@ export class FriendsService {
         'Friend request cancelled successfully.',
     };
   }
-
-  // =========================================================
-  // GET FRIENDS
-  // =========================================================
 
   async getFriends(userId: string) {
     const {
@@ -675,10 +645,6 @@ export class FriendsService {
     };
   }
 
-  // =========================================================
-  // REMOVE FRIEND
-  // =========================================================
-
   async removeFriend(
     userId: string,
     friendId: string,
@@ -713,7 +679,7 @@ export class FriendsService {
       );
     }
 
-    // Delete both directions
+    // remove both sides of the friendship
     const {
       error: deleteError,
     } = await supabase
@@ -735,10 +701,6 @@ export class FriendsService {
         'Friend removed successfully.',
     };
   }
-
-  // =========================================================
-  // SEARCH USERS
-  // =========================================================
 
   async searchUsers(
     userId: string,
@@ -784,12 +746,8 @@ export class FriendsService {
     };
   }
 
-  // =========================================================
-  // FRIEND SUGGESTIONS
-  // =========================================================
-
   async getSuggestions(userId: string) {
-    // Get current friends
+    // get the user's current friends
     const {
       data: friendships,
       error: friendshipError,
@@ -810,7 +768,7 @@ export class FriendsService {
       (item) => item.friend_id,
     );
 
-    // Get pending sent requests
+    // get pending requests sent by the user
     const {
       data: sentRequests,
       error: sentError,
@@ -826,7 +784,7 @@ export class FriendsService {
       );
     }
 
-    // Get pending received requests
+    // get pending requests received by the user
     const {
       data: receivedRequests,
       error: receivedError,
@@ -885,10 +843,6 @@ export class FriendsService {
       suggestions: users ?? [],
     };
   }
-
-  // =========================================================
-  // GET FRIEND STATUS
-  // =========================================================
 
   async getFriendStatus(
     userId: string,
@@ -981,10 +935,6 @@ export class FriendsService {
     };
   }
 
-  // =========================================================
-  // MUTUAL FRIENDS
-  // =========================================================
-
   async getMutualFriends(
     userId: string,
     otherUserId: string,
@@ -997,7 +947,7 @@ export class FriendsService {
       };
     }
 
-    // Get logged-in user's friends
+    // get the logged-in user's friends
     const {
       data: myFriendships,
       error: myFriendsError,
@@ -1012,7 +962,7 @@ export class FriendsService {
       );
     }
 
-    // Get other user's friends
+    // get the other user's friends
     const {
       data: otherFriendships,
       error: otherFriendsError,
@@ -1033,7 +983,7 @@ export class FriendsService {
       ),
     );
 
-    // Find common friends
+    // find users who are friends with both
     const mutualFriendIds = (
       otherFriendships ?? []
     )
@@ -1052,7 +1002,7 @@ export class FriendsService {
       };
     }
 
-    // Get profiles of mutual friends
+    // get profiles of mutual friends
     const {
       data: mutualFriends,
       error: usersError,
@@ -1078,7 +1028,8 @@ export class FriendsService {
     return {
       success: true,
       count: mutualFriendIds.length,
-      mutualFriends: mutualFriends ?? [],
+      mutualFriends:
+        mutualFriends ?? [],
     };
   }
 }

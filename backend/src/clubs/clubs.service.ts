@@ -18,20 +18,7 @@ export class ClubsService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
-  // =========================================================
-  // ROLE HIERARCHY
-  // =========================================================
-  //
-  // Higher number = higher authority
-  //
-  // president       = 5
-  // vice_president  = 4
-  // moderator       = 3
-  // volunteer       = 2
-  // member          = 1
-  //
-  // =========================================================
-
+  // higher number means higher authority
   private readonly roleLevel: Record<string, number> = {
     president: 5,
     vice_president: 4,
@@ -47,10 +34,6 @@ export class ClubsService {
     'volunteer',
     'member',
   ];
-
-  // =========================================================
-  // CREATE CLUB
-  // =========================================================
 
   async createClub(
     userId: string,
@@ -78,10 +61,7 @@ export class ClubsService {
       );
     }
 
-    // =======================================================
-    // CREATOR BECOMES PRESIDENT
-    // =======================================================
-
+    // add the creator as president
     const {
       error: memberError,
     } = await supabase
@@ -93,7 +73,7 @@ export class ClubsService {
       });
 
     if (memberError) {
-      // Roll back the club if membership creation fails
+      // remove the club if the membership could not be created
       await supabase
         .from('clubs')
         .delete()
@@ -124,10 +104,6 @@ export class ClubsService {
       },
     };
   }
-
-  // =========================================================
-  // GET ALL CLUBS
-  // =========================================================
 
   async findAll(
     userId: string,
@@ -259,18 +235,11 @@ export class ClubsService {
     };
   }
 
-  // =========================================================
-  // JOIN CLUB
-  // =========================================================
-
   async joinClub(
     userId: string,
     clubId: string,
   ) {
-    // -------------------------------------------------------
-    // CHECK CLUB
-    // -------------------------------------------------------
-
+    // check if the club exists
     const {
       data: club,
       error: clubError,
@@ -292,10 +261,7 @@ export class ClubsService {
       );
     }
 
-    // -------------------------------------------------------
-    // CHECK EXISTING MEMBERSHIP
-    // -------------------------------------------------------
-
+    // check if the user is already a member
     const {
       data: existingMember,
       error: memberError,
@@ -328,14 +294,7 @@ export class ClubsService {
       };
     }
 
-    // -------------------------------------------------------
-    // CREATE MEMBERSHIP
-    // -------------------------------------------------------
-    //
-    // Every newly joining user starts as an ordinary member.
-    //
-    // -------------------------------------------------------
-
+    // new members always start with the member role
     const {
       error: joinError,
     } = await supabase
@@ -352,16 +311,7 @@ export class ClubsService {
       );
     }
 
-    // =======================================================
-    // CLUB JOIN NOTIFICATION
-    // =======================================================
-    //
-    // Notify President(s) of the club.
-    //
-    // The actor cannot receive their own notification.
-    //
-    // =======================================================
-
+    // notify the club president about the new member
     const {
       data: presidents,
       error: presidentsError,
@@ -413,10 +363,6 @@ export class ClubsService {
     };
   }
 
-  // =========================================================
-  // LEAVE CLUB
-  // =========================================================
-
   async leaveClub(
     userId: string,
     clubId: string,
@@ -451,10 +397,7 @@ export class ClubsService {
       );
     }
 
-    // =======================================================
-    // PRESIDENT CANNOT LEAVE IF THEY ARE THE ONLY PRESIDENT
-    // =======================================================
-
+    // the only president cannot leave the club
     if (
       membership.role ===
       'president'
@@ -518,10 +461,6 @@ export class ClubsService {
         'Left club successfully.',
     };
   }
-
-  // =========================================================
-  // SUGGESTED CLUBS
-  // =========================================================
 
   async getSuggested(
     userId: string,
@@ -673,10 +612,6 @@ export class ClubsService {
     };
   }
 
-  // =========================================================
-  // MY CLUBS
-  // =========================================================
-
   async getMyClubs(
     userId: string,
   ) {
@@ -787,10 +722,6 @@ export class ClubsService {
     };
   }
 
-  // =========================================================
-  // GET ONE CLUB
-  // =========================================================
-
   async getOne(
     userId: string,
     clubId: string,
@@ -892,17 +823,10 @@ export class ClubsService {
     };
   }
 
-  // =========================================================
-  // GET CLUB MEMBERS
-  // =========================================================
-
   async getMembers(
     clubId: string,
   ) {
-    // -------------------------------------------------------
-    // CHECK CLUB EXISTS
-    // -------------------------------------------------------
-
+    // check that the club exists
     const {
       data: club,
       error: clubError,
@@ -927,10 +851,7 @@ export class ClubsService {
       );
     }
 
-    // -------------------------------------------------------
-    // GET MEMBERS
-    // -------------------------------------------------------
-
+    // get the members
     const {
       data: members,
       error: membersError,
@@ -997,11 +918,6 @@ export class ClubsService {
         safeMembers,
     };
   }
-
-  // =========================================================
-  // UPDATE CLUB
-  // PRESIDENT ONLY
-  // =========================================================
 
   async updateClub(
     userId: string,
@@ -1098,11 +1014,6 @@ export class ClubsService {
     };
   }
 
-  // =========================================================
-  // DELETE CLUB
-  // PRESIDENT ONLY
-  // =========================================================
-
   async deleteClub(
     userId: string,
     clubId: string,
@@ -1112,10 +1023,7 @@ export class ClubsService {
       clubId,
     );
 
-    // -------------------------------------------------------
-    // DELETE MEMBERSHIPS FIRST
-    // -------------------------------------------------------
-
+    // remove memberships before deleting the club
     const {
       error: membersError,
     } = await supabase
@@ -1132,10 +1040,7 @@ export class ClubsService {
       );
     }
 
-    // -------------------------------------------------------
-    // DELETE CLUB
-    // -------------------------------------------------------
-
+    // delete the club
     const {
       error: deleteError,
     } = await supabase
@@ -1158,11 +1063,6 @@ export class ClubsService {
         'Club deleted successfully.',
     };
   }
-
-  // =========================================================
-  // REMOVE MEMBER
-  // PRESIDENT / VP / MODERATOR
-  // =========================================================
 
   async removeMember(
     userId: string,
@@ -1205,10 +1105,7 @@ export class ClubsService {
       );
     }
 
-    // -------------------------------------------------------
-    // CANNOT REMOVE PRESIDENT
-    // -------------------------------------------------------
-
+    // president cannot be removed
     if (
       targetMember.role ===
       'president'
@@ -1228,17 +1125,7 @@ export class ClubsService {
         targetMember.role
       ];
 
-    // -------------------------------------------------------
-    // HIGHER ROLE ONLY
-    // -------------------------------------------------------
-    //
-    // Example:
-    // VP can remove moderator/volunteer/member.
-    // Moderator can remove volunteer/member.
-    // Volunteer cannot remove anyone.
-    //
-    // -------------------------------------------------------
-
+    // only a higher role can remove the target
     if (
       actorLevel <=
       targetLevel
@@ -1268,10 +1155,6 @@ export class ClubsService {
       );
     }
 
-    // =======================================================
-    // CLUB REMOVED NOTIFICATION
-    // =======================================================
-
     await this.notificationsService
       .tryCreateNotification(
         targetUserId,
@@ -1290,27 +1173,6 @@ export class ClubsService {
     };
   }
 
-  // =========================================================
-  // UPDATE MEMBER ROLE
-  // =========================================================
-  //
-  // PRESIDENT:
-  // Can manage every lower role.
-  //
-  // VICE PRESIDENT:
-  // Can manage moderator, volunteer and member.
-  //
-  // MODERATOR:
-  // Can manage volunteer and member.
-  //
-  // VOLUNTEER:
-  // Cannot manage roles.
-  //
-  // MEMBER:
-  // Cannot manage roles.
-  //
-  // =========================================================
-
   async updateMemberRole(
     userId: string,
     clubId: string,
@@ -1323,10 +1185,7 @@ export class ClubsService {
         clubId,
       );
 
-    // -------------------------------------------------------
-    // VALIDATE ROLE
-    // -------------------------------------------------------
-
+    // make sure the new role is valid
     if (
       !this.allowedRoles.includes(
         role,
@@ -1382,21 +1241,6 @@ export class ClubsService {
         role
       ];
 
-    // =======================================================
-    // PRESIDENT ROLE
-    // =======================================================
-    //
-    // Only the current president can transfer presidency.
-    //
-    // A president cannot simply demote themselves.
-    //
-    // When transferring presidency:
-    //
-    // current president -> vice_president
-    // target member     -> president
-    //
-    // =======================================================
-
     if (
       role === 'president'
     ) {
@@ -1428,16 +1272,7 @@ export class ClubsService {
         };
       }
 
-      // -----------------------------------------------------
-      // Promote target to president first.
-      // -----------------------------------------------------
-      //
-      // Then demote the old president.
-      //
-      // If demotion fails, attempt rollback.
-      //
-      // -----------------------------------------------------
-
+      // promote the new president first
       const {
         error: promoteError,
       } = await supabase
@@ -1477,7 +1312,7 @@ export class ClubsService {
         );
 
       if (demoteError) {
-        // Attempt rollback
+        // try to put the target back to their old role
         await supabase
           .from('club_members')
           .update({
@@ -1498,10 +1333,6 @@ export class ClubsService {
         );
       }
 
-      // =====================================================
-      // NOTIFICATION TO NEW PRESIDENT
-      // =====================================================
-
       await this.notificationsService
         .tryCreateNotification(
           targetUserId,
@@ -1512,10 +1343,6 @@ export class ClubsService {
           clubId,
           'CLUB',
         );
-
-      // =====================================================
-      // NOTIFICATION TO OLD PRESIDENT
-      // =====================================================
 
       await this.notificationsService
         .tryCreateNotification(
@@ -1543,10 +1370,7 @@ export class ClubsService {
       };
     }
 
-    // =======================================================
-    // PREVENT TARGET PRESIDENT FROM BEING DEMOTED
-    // =======================================================
-
+    // the president can only transfer the presidency
     if (
       targetMember.role ===
       'president'
@@ -1556,10 +1380,7 @@ export class ClubsService {
       );
     }
 
-    // =======================================================
-    // ACTOR MUST HAVE HIGHER AUTHORITY
-    // =======================================================
-
+    // actor must have a higher role than the target
     if (
       actorLevel <=
       targetCurrentLevel
@@ -1569,10 +1390,7 @@ export class ClubsService {
       );
     }
 
-    // =======================================================
-    // ACTOR CANNOT ASSIGN A ROLE EQUAL TO OR HIGHER
-    // =======================================================
-
+    // don't allow assigning an equal or higher role
     if (
       newRoleLevel >=
       actorLevel
@@ -1581,10 +1399,6 @@ export class ClubsService {
         'You cannot assign a role equal to or higher than your own role.',
       );
     }
-
-    // =======================================================
-    // UPDATE ROLE
-    // =======================================================
 
     const {
       data: updatedMember,
@@ -1613,10 +1427,6 @@ export class ClubsService {
       );
     }
 
-    // =======================================================
-    // CLUB ROLE CHANGED NOTIFICATION
-    // =======================================================
-
     await this.notificationsService
       .tryCreateNotification(
         targetUserId,
@@ -1644,10 +1454,6 @@ export class ClubsService {
       },
     };
   }
-
-  // =========================================================
-  // PRIVATE: REQUIRE PRESIDENT
-  // =========================================================
 
   private async requirePresident(
     userId: string,
@@ -1694,19 +1500,6 @@ export class ClubsService {
 
     return membership.role;
   }
-
-  // =========================================================
-  // PRIVATE:
-  // REQUIRE MEMBER MANAGEMENT PERMISSION
-  // =========================================================
-  //
-  // President
-  // Vice President
-  // Moderator
-  //
-  // can remove lower-level members.
-  //
-  // =========================================================
 
   private async requireMemberManagementPermission(
     userId: string,
@@ -1760,11 +1553,6 @@ export class ClubsService {
 
     return membership.role;
   }
-
-  // =========================================================
-  // PRIVATE:
-  // REQUIRE ROLE MANAGEMENT PERMISSION
-  // =========================================================
 
   private async requireRoleManagementPermission(
     userId: string,

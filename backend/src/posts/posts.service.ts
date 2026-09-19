@@ -9,69 +9,57 @@ import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class PostsService {
-
   constructor(
     private readonly notificationsService: NotificationsService,
   ) {}
 
-  // =========================================================
-// CREATE POST
-// =========================================================
+  async createPost(
+    userId: string,
+    content: string,
+  ) {
+    if (!content || !content.trim()) {
+      throw new BadRequestException(
+        'Post content cannot be empty.',
+      );
+    }
 
-async createPost(
-  userId: string,
-  content: string,
-) {
-  if (!content || !content.trim()) {
-    throw new BadRequestException(
-      'Post content cannot be empty.',
-    );
+    const trimmedContent =
+      content.trim();
+
+    const {
+      data,
+      error,
+    } = await supabase
+      .from('posts')
+      .insert({
+        user_id: userId,
+        content: trimmedContent,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(
+        error.message,
+      );
+    }
+
+    // notify users mentioned in the post
+    await this.notificationsService
+      .notifyMentionedUsers(
+        trimmedContent,
+        userId,
+        data.id,
+        'POST',
+      );
+
+    return {
+      success: true,
+      message:
+        'Post created successfully.',
+      data,
+    };
   }
-
-  const trimmedContent =
-    content.trim();
-
-  const {
-    data,
-    error,
-  } = await supabase
-    .from('posts')
-    .insert({
-      user_id: userId,
-      content: trimmedContent,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    throw new BadRequestException(
-      error.message,
-    );
-  }
-
-  // =======================================================
-  // CREATE MENTION NOTIFICATIONS
-  // =======================================================
-
-  await this.notificationsService
-    .notifyMentionedUsers(
-      trimmedContent,
-      userId,
-      data.id,
-      'POST',
-    );
-
-  return {
-    success: true,
-    message:
-      'Post created successfully.',
-    data,
-  };
-}
-
-  // =========================================================
-  // UPDATE POST
-  // =========================================================
 
   async updatePost(
     userId: string,
@@ -119,10 +107,6 @@ async createPost(
     };
   }
 
-  // =========================================================
-  // GET POSTS
-  // =========================================================
-
   async getPosts(
     pagination: PaginationDto,
     userId?: string,
@@ -167,8 +151,7 @@ async createPost(
       );
     }
 
-    // Get likes, comments and saves
-    // for these posts
+    // get likes, comments and saves for these posts
     const postIds = (posts ?? []).map(
       (post) => post.id,
     );
@@ -178,11 +161,6 @@ async createPost(
     let saves: any[] = [];
 
     if (postIds.length > 0) {
-
-      // -------------------------------------------------------
-      // GET LIKES
-      // -------------------------------------------------------
-
       const {
         data: likesData,
         error: likesError,
@@ -198,10 +176,6 @@ async createPost(
       }
 
       likes = likesData ?? [];
-
-      // -------------------------------------------------------
-      // GET COMMENTS
-      // -------------------------------------------------------
 
       const {
         data: commentsData,
@@ -220,10 +194,6 @@ async createPost(
 
       comments = commentsData ?? [];
 
-      // -------------------------------------------------------
-      // GET SAVES
-      // -------------------------------------------------------
-
       const {
         data: savesData,
         error: savesError,
@@ -241,37 +211,17 @@ async createPost(
       saves = savesData ?? [];
     }
 
-    // Add:
-    // likesCount
-    // isLiked
-    // commentsCount
-    // savesCount
-    // isSaved
-
     const postsWithCounts = (posts ?? []).map(
       (post) => {
-
-        // -----------------------------------------------------
-        // LIKES
-        // -----------------------------------------------------
-
         const postLikes = likes.filter(
           (like) =>
             like.post_id === post.id,
         );
 
-        // -----------------------------------------------------
-        // COMMENTS
-        // -----------------------------------------------------
-
         const commentsCount = comments.filter(
           (comment) =>
             comment.post_id === post.id,
         ).length;
-
-        // -----------------------------------------------------
-        // SAVES
-        // -----------------------------------------------------
 
         const postSaves = saves.filter(
           (save) =>
@@ -279,10 +229,6 @@ async createPost(
         );
 
         const savesCount = postSaves.length;
-
-        // -----------------------------------------------------
-        // RETURN POST
-        // -----------------------------------------------------
 
         return {
           ...post,
@@ -340,18 +286,10 @@ async createPost(
     };
   }
 
-  // =========================================================
-  // GET SINGLE POST
-  // =========================================================
-
   async getPostById(
     postId: string,
     userId: string,
   ) {
-    // -------------------------------------------------------
-    // GET POST
-    // -------------------------------------------------------
-
     const {
       data,
       error,
@@ -386,10 +324,6 @@ async createPost(
       );
     }
 
-    // -------------------------------------------------------
-    // GET LIKES
-    // -------------------------------------------------------
-
     const {
       data: likes,
       error: likesError,
@@ -415,10 +349,6 @@ async createPost(
           like.user_id === userId,
       );
 
-    // -------------------------------------------------------
-    // GET COMMENTS COUNT
-    // -------------------------------------------------------
-
     const {
       count: commentsCount,
       error: commentsError,
@@ -436,10 +366,6 @@ async createPost(
         commentsError.message,
       );
     }
-
-    // -------------------------------------------------------
-    // GET SAVES
-    // -------------------------------------------------------
 
     const {
       data: saves,
@@ -466,10 +392,6 @@ async createPost(
           save.user_id === userId,
       );
 
-    // -------------------------------------------------------
-    // RESPONSE
-    // -------------------------------------------------------
-
     return {
       success: true,
 
@@ -489,10 +411,6 @@ async createPost(
       },
     };
   }
-
-  // =========================================================
-  // DELETE POST
-  // =========================================================
 
   async deletePost(
     userId: string,
@@ -531,10 +449,6 @@ async createPost(
       data,
     };
   }
-
-  // =========================================================
-  // INCREMENT POST VIEW
-  // =========================================================
 
   async viewPost(
     userId: string,
@@ -577,15 +491,11 @@ async createPost(
     };
   }
 
-  // =========================================================
-  // LIKE POST
-  // =========================================================
-
   async likePost(
     userId: string,
     postId: string,
   ) {
-    // Check post exists
+    // check if the post exists
     const {
       data: post,
       error: postError,
@@ -608,7 +518,7 @@ async createPost(
       );
     }
 
-    // Check whether user already liked it
+    // check if the user already liked the post
     const {
       data: existingLike,
       error: likeCheckError,
@@ -632,7 +542,7 @@ async createPost(
       };
     }
 
-    // Create like
+    // create the like
     const {
       data,
       error,
@@ -651,10 +561,7 @@ async createPost(
       );
     }
 
-    // =======================================================
-    // CREATE POST LIKE NOTIFICATION
-    // =======================================================
-
+    // notify the post owner about the like
     await this.notificationsService
       .tryCreateNotification(
         post.user_id,
@@ -672,10 +579,6 @@ async createPost(
       data,
     };
   }
-
-  // =========================================================
-  // UNLIKE POST
-  // =========================================================
 
   async unlikePost(
     userId: string,
@@ -707,15 +610,11 @@ async createPost(
     };
   }
 
-  // =========================================================
-  // SAVE POST
-  // =========================================================
-
   async savePost(
     userId: string,
     postId: string,
   ) {
-    // Check post exists
+    // check if the post exists
     const {
       data: post,
       error: postError,
@@ -738,7 +637,7 @@ async createPost(
       );
     }
 
-    // Check whether user already saved it
+    // check if the user already saved the post
     const {
       data: existingSave,
       error: saveCheckError,
@@ -762,7 +661,7 @@ async createPost(
       };
     }
 
-    // Create save
+    // create the save
     const {
       data,
       error,
@@ -787,10 +686,6 @@ async createPost(
       data,
     };
   }
-
-  // =========================================================
-  // UNSAVE POST
-  // =========================================================
 
   async unsavePost(
     userId: string,

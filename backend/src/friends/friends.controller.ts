@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+
 import { Throttle } from '@nestjs/throttler';
 
 import { FriendsService } from './friends.service';
@@ -22,11 +23,6 @@ export class FriendsController {
     private readonly friendsService: FriendsService,
   ) {}
 
-  // =========================================================
-  // SEND FRIEND REQUEST
-  // 20 requests / 1 minute
-  // =========================================================
-
   @UseGuards(JwtAuthGuard)
   @Throttle({
     default: {
@@ -39,31 +35,23 @@ export class FriendsController {
     @CurrentUser() user: any,
     @Body('receiverId') receiverId: string,
   ) {
+    // send a new friend request
     return this.friendsService.sendFriendRequest(
       user.id,
       receiverId,
     );
   }
 
-  // =========================================================
-  // RECEIVED REQUESTS
-  // Global fallback: 100 / 1 minute
-  // =========================================================
-
   @UseGuards(JwtAuthGuard)
   @Get('requests')
   getReceivedRequests(
     @CurrentUser() user: any,
   ) {
+    // get incoming friend requests
     return this.friendsService.getReceivedRequests(
       user.id,
     );
   }
-
-  // =========================================================
-  // ACCEPT REQUEST
-  // Global fallback: 100 / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Patch('requests/:requestId/accept')
@@ -71,16 +59,12 @@ export class FriendsController {
     @CurrentUser() user: any,
     @Param('requestId') requestId: string,
   ) {
+    // accept a friend request
     return this.friendsService.acceptFriendRequest(
       user.id,
       requestId,
     );
   }
-
-  // =========================================================
-  // DECLINE REQUEST
-  // Global fallback: 100 / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Patch('requests/:requestId/decline')
@@ -88,31 +72,23 @@ export class FriendsController {
     @CurrentUser() user: any,
     @Param('requestId') requestId: string,
   ) {
+    // decline a friend request
     return this.friendsService.declineFriendRequest(
       user.id,
       requestId,
     );
   }
 
-  // =========================================================
-  // SENT REQUESTS
-  // Global fallback: 100 / 1 minute
-  // =========================================================
-
   @UseGuards(JwtAuthGuard)
   @Get('requests/sent')
   getSentRequests(
     @CurrentUser() user: any,
   ) {
+    // get requests sent by the user
     return this.friendsService.getSentRequests(
       user.id,
     );
   }
-
-  // =========================================================
-  // CANCEL REQUEST
-  // Global fallback: 100 / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Delete('requests/:requestId')
@@ -120,31 +96,23 @@ export class FriendsController {
     @CurrentUser() user: any,
     @Param('requestId') requestId: string,
   ) {
+    // cancel a sent request
     return this.friendsService.cancelFriendRequest(
       user.id,
       requestId,
     );
   }
 
-  // =========================================================
-  // GET FRIENDS
-  // Global fallback: 100 / 1 minute
-  // =========================================================
-
   @UseGuards(JwtAuthGuard)
   @Get()
   getFriends(
     @CurrentUser() user: any,
   ) {
+    // get the user's friends
     return this.friendsService.getFriends(
       user.id,
     );
   }
-
-  // =========================================================
-  // SEARCH USERS
-  // 60 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -158,16 +126,12 @@ export class FriendsController {
     @CurrentUser() user: any,
     @Query('q') search: string,
   ) {
+    // search for users
     return this.friendsService.searchUsers(
       user.id,
       search,
     );
   }
-
-  // =========================================================
-  // FRIEND SUGGESTIONS
-  // 60 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -180,15 +144,11 @@ export class FriendsController {
   getSuggestions(
     @CurrentUser() user: any,
   ) {
+    // get people the user may know
     return this.friendsService.getSuggestions(
       user.id,
     );
   }
-
-  // =========================================================
-  // FRIEND STATUS
-  // Global fallback: 100 / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Get('status/:userId')
@@ -196,16 +156,12 @@ export class FriendsController {
     @CurrentUser() user: any,
     @Param('userId') otherUserId: string,
   ) {
+    // check the friendship status
     return this.friendsService.getFriendStatus(
       user.id,
       otherUserId,
     );
   }
-
-  // =========================================================
-  // REMOVE FRIEND
-  // Global fallback: 100 / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Delete(':friendId')
@@ -213,16 +169,12 @@ export class FriendsController {
     @CurrentUser() user: any,
     @Param('friendId') friendId: string,
   ) {
+    // remove an existing friend
     return this.friendsService.removeFriend(
       user.id,
       friendId,
     );
   }
-
-  // =========================================================
-  // MUTUAL FRIENDS
-  // Global fallback: 100 / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Get('mutual/:userId')
@@ -230,6 +182,7 @@ export class FriendsController {
     @CurrentUser() user: any,
     @Param('userId') otherUserId: string,
   ) {
+    // get friends shared with another user
     return this.friendsService.getMutualFriends(
       user.id,
       otherUserId,

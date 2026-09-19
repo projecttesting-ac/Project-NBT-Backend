@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 
 import { Throttle } from '@nestjs/throttler';
+
 import { FileInterceptor } from '@nestjs/platform-express';
 
 import { MediaService } from './media.service';
@@ -21,11 +22,6 @@ export class MediaController {
   constructor(
     private readonly mediaService: MediaService,
   ) {}
-
-  // =========================================================
-  // MEDIA UPLOAD
-  // 20 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -40,17 +36,12 @@ export class MediaController {
     @CurrentUser() user: any,
     @UploadedFile() file: any,
   ) {
+    // upload media for the logged-in user
     return this.mediaService.upload(
       user.id,
       file,
     );
   }
-
-  // =========================================================
-  // GET MEDIA URL
-  // Global authenticated fallback:
-  // 100 requests / 1 minute
-  // =========================================================
 
   @UseGuards(JwtAuthGuard)
   @Get(':mediaId/url')
@@ -58,6 +49,7 @@ export class MediaController {
     @CurrentUser() user: any,
     @Param('mediaId') mediaId: string,
   ) {
+    // get the media URL
     return (this.mediaService as any).getMediaUrl(
       user.id,
       mediaId,

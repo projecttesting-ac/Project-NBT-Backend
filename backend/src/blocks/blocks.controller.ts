@@ -21,11 +21,7 @@ export class BlocksController {
     private readonly blocksService: BlocksService,
   ) {}
 
-  // =========================================================
-  // BLOCK USER
-  // POST /api/blocks?userId=USER_UUID
-  // =========================================================
-
+  // block another user
   @Post()
   blockUser(
     @CurrentUser() user: any,
@@ -37,11 +33,7 @@ export class BlocksController {
     );
   }
 
-  // =========================================================
-  // UNBLOCK USER
-  // DELETE /api/blocks?userId=USER_UUID
-  // =========================================================
-
+  // remove a user from the blocked list
   @Delete()
   unblockUser(
     @CurrentUser() user: any,
@@ -53,11 +45,7 @@ export class BlocksController {
     );
   }
 
-  // =========================================================
-  // GET MY BLOCKED USERS
-  // GET /api/blocks
-  // =========================================================
-
+  // get users blocked by the current user
   @Get()
   getBlockedUsers(
     @CurrentUser() user: any,
@@ -69,11 +57,7 @@ export class BlocksController {
     );
   }
 
-  // =========================================================
-  // CHECK BLOCK STATUS
-  // GET /api/blocks/status?userId=USER_UUID
-  // =========================================================
-
+  // check whether a user is blocked
   @Get('status')
   getBlockStatus(
     @CurrentUser() user: any,

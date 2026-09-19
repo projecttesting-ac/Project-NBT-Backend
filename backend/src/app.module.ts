@@ -2,10 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
-import {
-  ThrottlerGuard,
-  ThrottlerModule,
-} from '@nestjs/throttler';
+import { ThrottlerModule } from '@nestjs/throttler';
 
 import { NotificationsModule } from './notifications/notifications.module';
 import { AppController } from './app.controller';
@@ -20,6 +17,8 @@ import { FriendsModule } from './friends/friends.module';
 import { PostsModule } from './posts/posts.module';
 import { BlocksModule } from './blocks/blocks.module';
 
+import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
+
 @Module({
   imports: [
     ConfigModule.forRoot({
@@ -30,41 +29,11 @@ import { BlocksModule } from './blocks/blocks.module';
       throttlers: [
         {
           name: 'default',
+
+          // Global fallback:
+          // 100 requests / 1 minute
           ttl: 60_000,
           limit: 100,
-
-          getTracker: async (req) => {
-            // If authentication has already populated req.user.
-            if (req.user?.id) {
-              return `user:${req.user.id}`;
-            }
-
-            // Otherwise fall back to IP.
-            const forwardedFor =
-              req.headers?.['x-forwarded-for'];
-
-            if (
-              typeof forwardedFor === 'string' &&
-              forwardedFor.length > 0
-            ) {
-              return `ip:${forwardedFor
-                .split(',')[0]
-                .trim()}`;
-            }
-
-            if (
-              Array.isArray(forwardedFor) &&
-              forwardedFor.length > 0
-            ) {
-              return `ip:${String(forwardedFor[0])}`;
-            }
-
-            return `ip:${
-              req.ip ||
-              req.socket?.remoteAddress ||
-              'unknown'
-            }`;
-          },
         },
       ],
     }),
@@ -81,14 +50,16 @@ import { BlocksModule } from './blocks/blocks.module';
     NotificationsModule,
   ],
 
-  controllers: [AppController],
+  controllers: [
+    AppController,
+  ],
 
   providers: [
     AppService,
 
     {
       provide: APP_GUARD,
-      useClass: ThrottlerGuard,
+      useClass: CustomThrottlerGuard,
     },
 
     JwtService,

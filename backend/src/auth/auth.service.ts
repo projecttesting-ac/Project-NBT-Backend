@@ -30,10 +30,7 @@ export class AuthService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
-  // =========================================================
-  // GENERATE OTP
-  // =========================================================
-
+  // Generate a fixed OTP when testing, otherwise create a random one.
   private generateOtp(): string {
     if (process.env.USE_STATIC_OTP === 'true') {
       return process.env.STATIC_OTP || '1111';
@@ -44,10 +41,7 @@ export class AuthService {
     ).toString();
   }
 
-  // =========================================================
-  // SAVE OTP
-  // =========================================================
-
+  // Save an OTP with a 5 minute expiry.
   private async saveOtp(
     mobileNumber: string,
     otp: string,
@@ -71,10 +65,6 @@ export class AuthService {
     }
   }
 
-  // =========================================================
-  // CREATE ACCESS TOKEN
-  // =========================================================
-
   private createAccessToken(user: any): string {
     return this.jwtService.sign(
       {
@@ -87,10 +77,6 @@ export class AuthService {
     );
   }
 
-  // =========================================================
-  // CREATE REFRESH TOKEN
-  // =========================================================
-
   private createRefreshToken(user: any): string {
     return this.jwtService.sign(
       {
@@ -102,15 +88,11 @@ export class AuthService {
     );
   }
 
-  // =========================================================
-  // SAVE REFRESH TOKEN
-  // =========================================================
-
   private async saveRefreshToken(
     userId: string,
     refreshToken: string,
   ): Promise<void> {
-    // Delete previous refresh token
+    // Keep only the latest refresh token for the user.
     await supabase
       .from('refresh_tokens')
       .delete()
@@ -136,10 +118,6 @@ export class AuthService {
     }
   }
 
-  // =========================================================
-  // SANITIZE USER
-  // =========================================================
-
   private sanitizeUser(user: any) {
     const {
       password_hash,
@@ -149,10 +127,6 @@ export class AuthService {
     return safeUser;
   }
 
-  // =========================================================
-  // REGISTER
-  // =========================================================
-
   async register(registerDto: RegisterDto) {
     const {
       countryCode,
@@ -161,8 +135,7 @@ export class AuthService {
       confirmPassword,
     } = registerDto;
 
-    // Convert country code + local number
-    // into normalized international format.
+    // Convert the selected country code and local number to one format.
     const mobileNumber =
       normalizePhoneNumber(
         countryCode,
@@ -175,7 +148,6 @@ export class AuthService {
       );
     }
 
-    // Check whether mobile number is already registered
     const {
       data: existingUser,
       error: checkError,
@@ -210,18 +182,16 @@ export class AuthService {
       );
     }
 
-    // Hash password temporarily
     const passwordHash =
       await bcrypt.hash(
         password,
         12,
       );
 
-    // Generate OTP
     const otp =
       this.generateOtp();
 
-    // Remove any previous registration OTP
+    // Remove an older OTP before creating a new registration OTP.
     await supabase
       .from('otp_codes')
       .delete()
@@ -230,7 +200,6 @@ export class AuthService {
         mobileNumber,
       );
 
-    // Save OTP + password temporarily
     const {
       error: otpError,
     } = await supabase
@@ -265,10 +234,6 @@ export class AuthService {
     };
   }
 
-  // =========================================================
-  // VERIFY REGISTER OTP
-  // =========================================================
-
   async verifyRegisterOtp(
     verifyOtpDto: VerifyOtpDto,
   ) {
@@ -284,7 +249,6 @@ export class AuthService {
         localMobileNumber,
       );
 
-    // Find matching OTP
     const {
       data: otpData,
       error: otpError,
@@ -304,14 +268,12 @@ export class AuthService {
       );
     }
 
-    // Wrong OTP
     if (!otpData) {
       throw new UnauthorizedException(
         'Invalid OTP.',
       );
     }
 
-    // OTP expired
     if (
       new Date(
         otpData.expires_at,
@@ -322,16 +284,13 @@ export class AuthService {
       );
     }
 
-    // Password was not saved
-    // with registration OTP
     if (!otpData.password_hash) {
       throw new BadRequestException(
         'Registration data not found.',
       );
     }
 
-    // Create user ONLY after
-    // correct OTP
+    // The account is created only after the OTP is verified.
     const {
       data: user,
       error: userError,
@@ -356,8 +315,6 @@ export class AuthService {
       );
     }
 
-    // Delete OTP after
-    // successful verification
     await supabase
       .from('otp_codes')
       .delete()
@@ -366,7 +323,6 @@ export class AuthService {
         mobileNumber,
       );
 
-    // Create tokens
     const accessToken =
       this.createAccessToken(
         user,
@@ -392,10 +348,6 @@ export class AuthService {
         user.is_profile_completed,
     };
   }
-
-  // =========================================================
-  // LOGIN
-  // =========================================================
 
   async login(
     loginDto: LoginDto,
@@ -466,10 +418,6 @@ export class AuthService {
         'OTP sent successfully.',
     };
   }
-
-  // =========================================================
-  // VERIFY LOGIN OTP
-  // =========================================================
 
   async verifyLoginOtp(
     verifyOtpDto: VerifyOtpDto,
@@ -579,11 +527,7 @@ export class AuthService {
       refreshToken,
     );
 
-    // =======================================================
-    // CREATE NEW LOGIN NOTIFICATION
-    // =======================================================
-
-    // Notification failure must NOT break login.
+    // A notification problem should not stop the login.
     await this.notificationsService
       .tryCreateNotification(
         user.id,
@@ -612,10 +556,6 @@ export class AuthService {
       user: safeUser,
     };
   }
-
-  // =========================================================
-  // RESEND OTP
-  // =========================================================
 
   async resendOtp(
     countryCode: string,
@@ -669,10 +609,6 @@ export class AuthService {
         'OTP resent successfully.',
     };
   }
-
-  // =========================================================
-  // FORGOT PASSWORD
-  // =========================================================
 
   async forgotPassword(
     dto: ForgotPasswordDto,
@@ -730,10 +666,6 @@ export class AuthService {
         'OTP sent successfully.',
     };
   }
-
-  // =========================================================
-  // VERIFY FORGOT PASSWORD OTP
-  // =========================================================
 
   async verifyForgotPasswordOtp(
     verifyOtpDto: VerifyOtpDto,
@@ -830,10 +762,6 @@ export class AuthService {
     };
   }
 
-  // =========================================================
-  // RESET PASSWORD
-  // =========================================================
-
   async resetPassword(
     dto: ResetPasswordDto,
   ) {
@@ -910,10 +838,6 @@ export class AuthService {
       );
     }
 
-    // =======================================================
-    // GET USER ID FOR NOTIFICATION
-    // =======================================================
-
     const {
       data: user,
       error: userError,
@@ -926,11 +850,7 @@ export class AuthService {
       )
       .maybeSingle();
 
-    // =======================================================
-    // CREATE PASSWORD CHANGED NOTIFICATION
-    // =======================================================
-
-    // Notification failure must NOT break password reset.
+    // Password reset notification is optional and should not break the reset.
     if (
       !userError &&
       user
@@ -947,7 +867,6 @@ export class AuthService {
         );
     }
 
-    // Delete used reset token
     await supabase
       .from(
         'password_reset_tokens',
@@ -964,10 +883,6 @@ export class AuthService {
         'Password reset successfully.',
     };
   }
-
-  // =========================================================
-  // CHANGE PASSWORD
-  // =========================================================
 
   async changePassword(
     userId: string,
@@ -1046,11 +961,7 @@ export class AuthService {
       );
     }
 
-    // =======================================================
-    // CREATE PASSWORD CHANGED NOTIFICATION
-    // =======================================================
-
-    // Notification failure must NOT break password change.
+    // Don't fail the password change if notification creation has a problem.
     await this.notificationsService
       .tryCreateNotification(
         userId,
@@ -1068,10 +979,6 @@ export class AuthService {
         'Password changed successfully.',
     };
   }
-
-  // =========================================================
-  // REFRESH TOKEN
-  // =========================================================
 
   async refreshToken(
     dto: RefreshTokenDto,
@@ -1143,10 +1050,6 @@ export class AuthService {
     };
   }
 
-  // =========================================================
-  // LOGOUT
-  // =========================================================
-
   async logout(
     dto: LogoutDto,
   ) {
@@ -1154,7 +1057,6 @@ export class AuthService {
       refreshToken,
     } = dto;
 
-    // Find the refresh token
     const {
       data: tokenData,
       error: tokenError,
@@ -1176,7 +1078,7 @@ export class AuthService {
       );
     }
 
-    // Mark user offline
+    // Set the user offline when they log out.
     await supabase
       .from('users')
       .update({
@@ -1191,22 +1093,13 @@ export class AuthService {
         tokenData.user_id,
       );
 
-    // Delete refresh token
-    const {
-      error,
-    } = await supabase
+    await supabase
       .from('refresh_tokens')
       .delete()
       .eq(
         'token',
         refreshToken,
       );
-
-    if (error) {
-      throw new BadRequestException(
-        error.message,
-      );
-    }
 
     return {
       success: true,

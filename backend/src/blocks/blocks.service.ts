@@ -10,10 +10,6 @@ import { PaginationDto } from '../common/dto/pagination.dto';
 
 @Injectable()
 export class BlocksService {
-  // =========================================================
-  // BLOCK USER
-  // =========================================================
-
   async blockUser(userId: string, targetUserId: string) {
     if (userId === targetUserId) {
       throw new BadRequestException(
@@ -21,10 +17,7 @@ export class BlocksService {
       );
     }
 
-    // -------------------------------------------------------
-    // CHECK TARGET USER
-    // -------------------------------------------------------
-
+    // check if the target user exists
     const {
       data: targetUser,
       error: userError,
@@ -48,10 +41,7 @@ export class BlocksService {
       );
     }
 
-    // -------------------------------------------------------
-    // CHECK EXISTING BLOCK
-    // -------------------------------------------------------
-
+    // check if the user is already blocked
     const {
       data: existingBlock,
       error: existingError,
@@ -74,10 +64,7 @@ export class BlocksService {
       );
     }
 
-    // -------------------------------------------------------
-    // CREATE BLOCK
-    // -------------------------------------------------------
-
+    // save the new block
     const {
       data: block,
       error: blockError,
@@ -107,14 +94,11 @@ export class BlocksService {
     };
   }
 
-  // =========================================================
-  // UNBLOCK USER
-  // =========================================================
-
   async unblockUser(
     userId: string,
     targetUserId: string,
   ) {
+    // find the block before removing it
     const {
       data: block,
       error: blockError,
@@ -155,10 +139,6 @@ export class BlocksService {
       message: 'User unblocked successfully.',
     };
   }
-
-  // =========================================================
-  // GET MY BLOCKED USERS
-  // =========================================================
 
   async getBlockedUsers(
     userId: string,
@@ -244,10 +224,6 @@ export class BlocksService {
       },
     };
   }
-
-  // =========================================================
-  // CHECK BLOCK STATUS
-  // =========================================================
 
   async getBlockStatus(
     userId: string,
