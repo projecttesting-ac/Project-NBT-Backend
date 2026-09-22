@@ -446,6 +446,8 @@ export class CommentsService {
         'Comment content cannot be empty.',
       );
     }
+    const trimmedContent =
+    content.trim();
 
     const {
       data,
@@ -454,7 +456,7 @@ export class CommentsService {
       .from('post_comments')
       .update({
         content:
-          content.trim(),
+        trimmedContent,
         is_edited: true,
         updated_at:
           new Date().toISOString(),
@@ -489,6 +491,14 @@ export class CommentsService {
         'Comment not found or you are not the owner.',
       );
     }
+    // notify users mentioned in the updated comment
+    await this.notificationsService
+    .notifyMentionedUsers(
+    trimmedContent,
+    userId,
+    data.id,
+    'COMMENT',
+    );
 
     return {
       success: true,

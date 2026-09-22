@@ -13,7 +13,6 @@ import {
 } from '@nestjs/common';
 
 import { Throttle } from '@nestjs/throttler';
-
 import { FileInterceptor } from '@nestjs/platform-express';
 
 import { ConversationsService } from './conversations.service';
@@ -25,6 +24,8 @@ import { SendMessageDto } from './dto/send-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { ForwardMessageDto } from './dto/forward-message.dto';
 import { ReactMessageDto } from './dto/react-message.dto';
+import { CreateGroupDto } from './dto/create-group.dto';
+import { GroupMentionQueryDto } from './dto/group-mention-query.dto';
 
 import { PaginationDto } from '../common/dto/pagination.dto';
 
@@ -33,6 +34,24 @@ export class ConversationsController {
   constructor(
     private readonly conversationsService: ConversationsService,
   ) {}
+
+  @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 20,
+      ttl: 60 * 1000,
+    },
+  })
+  @Post('group')
+  createGroup(
+    @CurrentUser() user: any,
+    @Body() dto: CreateGroupDto,
+  ) {
+    return this.conversationsService.createGroup(
+      user.id,
+      dto,
+    );
+  }
 
   @UseGuards(JwtAuthGuard)
   @Throttle({
@@ -68,6 +87,44 @@ export class ConversationsController {
     return this.conversationsService.getConversations(
       user.id,
       pagination,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 60,
+      ttl: 60 * 1000,
+    },
+  })
+  @Get(':conversationId/mention-users')
+  getGroupMentionUsers(
+    @CurrentUser() user: any,
+    @Param('conversationId') conversationId: string,
+    @Query() dto: GroupMentionQueryDto,
+  ) {
+    return this.conversationsService.getGroupMentionUsers(
+      user.id,
+      conversationId,
+      dto,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 60,
+      ttl: 60 * 1000,
+    },
+  })
+  @Get(':conversationId/members')
+  getGroupMembers(
+    @CurrentUser() user: any,
+    @Param('conversationId') conversationId: string,
+  ) {
+    return this.conversationsService.getGroupMembers(
+      user.id,
+      conversationId,
     );
   }
 

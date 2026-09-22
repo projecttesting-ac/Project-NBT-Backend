@@ -145,12 +145,12 @@ export class PostsController {
     },
   })
   @Delete(':postId/like')
-  unlikePost(
+  dislikePost(
     @CurrentUser() user: any,
     @Param('postId') postId: string,
   ) {
     // remove the like
-    return this.postsService.unlikePost(
+    return this.postsService.dislikePost(
       user.id,
       postId,
     );

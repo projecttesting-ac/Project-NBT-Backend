@@ -1,7 +1,16 @@
-import { IsNotEmpty, IsString } from 'class-validator';
+import {
+  IsArray,
+  IsOptional,
+  IsString,
+} from 'class-validator';
+
+import { MessageMentionDto } from './message-mention.dto';
 
 export class UpdateMessageDto {
   @IsString()
-  @IsNotEmpty()
   content!: string;
+
+  @IsOptional()
+  @IsArray()
+  mentions?: MessageMentionDto[];
 }

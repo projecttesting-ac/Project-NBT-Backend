@@ -5,6 +5,7 @@ import {
   IsString,
   IsUUID,
 } from 'class-validator';
+import { MessageMentionDto } from './message-mention.dto';
 
 export class SendMessageDto {
   @IsOptional()
@@ -19,4 +20,8 @@ export class SendMessageDto {
   @IsArray()
   @IsUUID('4', { each: true })
   mediaIds?: string[];
+
+  @IsOptional()
+  @IsArray()
+  mentions?: MessageMentionDto[];
 }

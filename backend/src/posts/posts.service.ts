@@ -580,7 +580,7 @@ export class PostsService {
     };
   }
 
-  async unlikePost(
+  async dislikePost(
     userId: string,
     postId: string,
   ) {
@@ -604,7 +604,7 @@ export class PostsService {
     return {
       success: true,
       message: data
-        ? 'Post unliked successfully.'
+        ? 'Post disliked successfully.'
         : 'Post was not liked.',
       data,
     };

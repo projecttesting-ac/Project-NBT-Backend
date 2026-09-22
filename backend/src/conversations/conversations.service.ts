@@ -3,19 +3,112 @@ import {
   Injectable,
 } from '@nestjs/common';
 
+import { GroupMentionQueryDto } from './dto/group-mention-query.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { ForwardMessageDto } from './dto/forward-message.dto';
+import { CreateGroupDto } from './dto/create-group.dto';
 
 import { supabase } from '../config/supabase';
 import { MediaService } from '../media/media.service';
-import { PaginationDto } from 'src/common/dto/pagination.dto';
+import { PaginationDto } from '../common/dto/pagination.dto';
 
 @Injectable()
 export class ConversationsService {
   constructor(
     private readonly mediaService: MediaService,
   ) {}
+
+  async createGroup(
+    userId: string,
+    dto: CreateGroupDto,
+  ) {
+    const memberIds = [
+      ...new Set([
+        userId,
+        ...dto.memberIds,
+      ]),
+    ];
+
+    // make sure all requested users exist
+    const {
+      data: users,
+      error: usersError,
+    } = await supabase
+      .from('users')
+      .select('id')
+      .in('id', memberIds);
+
+    if (usersError) {
+      throw new BadRequestException(
+        usersError.message,
+      );
+    }
+
+    if (
+      !users ||
+      users.length !== memberIds.length
+    ) {
+      throw new BadRequestException(
+        'One or more group members were not found.',
+      );
+    }
+
+    // create the group conversation
+    const {
+      data: conversation,
+      error: conversationError,
+    } = await supabase
+      .from('conversations')
+      .insert({
+        type: 'group',
+        name: dto.name.trim(),
+        avatar_url:
+          dto.avatarUrl?.trim() || null,
+        created_by: userId,
+      })
+      .select()
+      .single();
+
+    if (conversationError) {
+      throw new BadRequestException(
+        conversationError.message,
+      );
+    }
+
+    // add the creator and selected members
+    const members = memberIds.map(
+      (memberId) => ({
+        conversation_id: conversation.id,
+        user_id: memberId,
+      }),
+    );
+
+    const {
+      error: membersError,
+    } = await supabase
+      .from('conversation_members')
+      .insert(members);
+
+    if (membersError) {
+      await supabase
+        .from('conversations')
+        .delete()
+        .eq('id', conversation.id);
+
+      throw new BadRequestException(
+        membersError.message,
+      );
+    }
+
+    return {
+      success: true,
+      message:
+        'Group created successfully.',
+      conversation,
+      members: memberIds,
+    };
+  }
 
   async createConversation(
     userId: string,
@@ -85,6 +178,7 @@ export class ConversationsService {
           conversationIds,
         )
         .eq('user_id', targetUserId)
+        .limit(1)
         .maybeSingle();
 
       if (existingError) {
@@ -96,7 +190,8 @@ export class ConversationsService {
       if (existingMembership) {
         return {
           success: true,
-          message: 'Conversation already exists.',
+          message:
+            'Conversation already exists.',
           conversationId:
             existingMembership.conversation_id,
         };
@@ -139,7 +234,6 @@ export class ConversationsService {
           },
         ]);
 
-    // remove the conversation if adding members fails
     if (membersError) {
       await supabase
         .from('conversations')
@@ -283,6 +377,7 @@ export class ConversationsService {
           membership.conversation_id,
         )
         .neq('user_id', userId)
+        .limit(1)
         .maybeSingle();
 
       if (memberError) {
@@ -298,13 +393,13 @@ export class ConversationsService {
         } = await supabase
           .from('users')
           .select(`
-          id,
-          display_name,
-          username,
-          avatar_url,
-          is_online,
-          last_seen
-        `)
+            id,
+            display_name,
+            username,
+            avatar_url,
+            is_online,
+            last_seen
+          `)
           .eq(
             'id',
             otherMember.user_id,
@@ -390,6 +485,271 @@ export class ConversationsService {
     };
   }
 
+  async getGroupMentionUsers(
+    userId: string,
+    conversationId: string,
+    dto: GroupMentionQueryDto,
+  ) {
+    // make sure the user belongs to the conversation
+    const {
+      data: membership,
+      error: membershipError,
+    } = await supabase
+      .from('conversation_members')
+      .select('conversation_id')
+      .eq(
+        'conversation_id',
+        conversationId,
+      )
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (membershipError) {
+      throw new BadRequestException(
+        membershipError.message,
+      );
+    }
+
+    if (!membership) {
+      throw new BadRequestException(
+        'You are not a member of this conversation.',
+      );
+    }
+
+    // make sure this is a group conversation
+    const {
+      data: conversation,
+      error: conversationError,
+    } = await supabase
+      .from('conversations')
+      .select('id, type')
+      .eq('id', conversationId)
+      .maybeSingle();
+
+    if (conversationError) {
+      throw new BadRequestException(
+        conversationError.message,
+      );
+    }
+
+    if (!conversation) {
+      throw new BadRequestException(
+        'Conversation not found.',
+      );
+    }
+
+    if (conversation.type !== 'group') {
+      throw new BadRequestException(
+        'Mentions are only available in group conversations.',
+      );
+    }
+
+    const search = String(
+      dto.query ?? '',
+    )
+      .trim()
+      .toLowerCase();
+
+    // get group members
+    const {
+      data: members,
+      error: membersError,
+    } = await supabase
+      .from('conversation_members')
+      .select(`
+        user_id,
+        users (
+          id,
+          username,
+          display_name,
+          avatar_url
+        )
+      `)
+      .eq(
+        'conversation_id',
+        conversationId,
+      );
+
+    if (membersError) {
+      throw new BadRequestException(
+        membersError.message,
+      );
+    }
+
+    const users = (members ?? [])
+      .map((member: any) => member.users)
+      .filter(Boolean)
+      .filter((user: any) => {
+        if (!search) {
+          return true;
+        }
+
+        const username =
+          String(
+            user.username ?? '',
+          ).toLowerCase();
+
+        const displayName =
+          String(
+            user.display_name ?? '',
+          ).toLowerCase();
+
+        return (
+          username.includes(search) ||
+          displayName.includes(search)
+        );
+      })
+      .slice(0, 20)
+      .map((user: any) => ({
+        id: user.id,
+        username: user.username,
+        displayName:
+          user.display_name,
+        avatarUrl:
+          user.avatar_url,
+      }));
+
+    return {
+      success: true,
+      users,
+    };
+  }
+
+  async getGroupMembers(
+    userId: string,
+    conversationId: string,
+  ) {
+    // make sure the user belongs to the conversation
+    const {
+      data: membership,
+      error: membershipError,
+    } = await supabase
+      .from('conversation_members')
+      .select('conversation_id')
+      .eq(
+        'conversation_id',
+        conversationId,
+      )
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (membershipError) {
+      throw new BadRequestException(
+        membershipError.message,
+      );
+    }
+
+    if (!membership) {
+      throw new BadRequestException(
+        'You are not a member of this conversation.',
+      );
+    }
+
+    // make sure this is a group conversation
+    const {
+      data: conversation,
+      error: conversationError,
+    } = await supabase
+      .from('conversations')
+      .select(
+        'id, type, name, avatar_url, created_by',
+      )
+      .eq('id', conversationId)
+      .maybeSingle();
+
+    if (conversationError) {
+      throw new BadRequestException(
+        conversationError.message,
+      );
+    }
+
+    if (!conversation) {
+      throw new BadRequestException(
+        'Conversation not found.',
+      );
+    }
+
+    if (conversation.type !== 'group') {
+      throw new BadRequestException(
+        'Members can only be viewed for group conversations.',
+      );
+    }
+
+    // get all group members
+    const {
+      data: members,
+      error: membersError,
+    } = await supabase
+      .from('conversation_members')
+      .select(`
+        user_id,
+        joined_at,
+        users (
+          id,
+          display_name,
+          username,
+          avatar_url,
+          is_online,
+          last_seen
+        )
+      `)
+      .eq(
+        'conversation_id',
+        conversationId,
+      )
+      .order('joined_at', {
+        ascending: true,
+      });
+
+    if (membersError) {
+      throw new BadRequestException(
+        membersError.message,
+      );
+    }
+
+    const formattedMembers =
+      (members ?? [])
+        .map((member: any) => {
+          const user = member.users;
+
+          if (!user) {
+            return null;
+          }
+
+          return {
+            id: user.id,
+            username: user.username,
+            displayName:
+              user.display_name,
+            avatarUrl:
+              user.avatar_url,
+            isOnline:
+              user.is_online,
+            lastSeen:
+              user.last_seen,
+            joinedAt:
+              member.joined_at,
+            isAdmin:
+              user.id ===
+              conversation.created_by,
+          };
+        })
+        .filter(Boolean);
+
+    return {
+      success: true,
+      conversation: {
+        id: conversation.id,
+        name: conversation.name,
+        avatarUrl:
+          conversation.avatar_url,
+        createdBy:
+          conversation.created_by,
+      },
+      members: formattedMembers,
+    };
+  }
+
   async getMessages(
     userId: string,
     conversationId: string,
@@ -402,7 +762,10 @@ export class ConversationsService {
     } = await supabase
       .from('conversation_members')
       .select('conversation_id')
-      .eq('conversation_id', conversationId)
+      .eq(
+        'conversation_id',
+        conversationId,
+      )
       .eq('user_id', userId)
       .maybeSingle();
 
@@ -463,7 +826,10 @@ export class ConversationsService {
           count: 'exact',
         },
       )
-      .eq('conversation_id', conversationId)
+      .eq(
+        'conversation_id',
+        conversationId,
+      )
       .order('created_at', {
         ascending: true,
       })
@@ -482,8 +848,12 @@ export class ConversationsService {
     } = await supabase
       .from('conversation_members')
       .select('user_id')
-      .eq('conversation_id', conversationId)
+      .eq(
+        'conversation_id',
+        conversationId,
+      )
       .neq('user_id', userId)
+      .limit(1)
       .maybeSingle();
 
     if (memberError) {
@@ -510,7 +880,10 @@ export class ConversationsService {
           last_seen
         `,
         )
-        .eq('id', otherMember.user_id)
+        .eq(
+          'id',
+          otherMember.user_id,
+        )
         .single();
 
       if (userError) {
@@ -624,6 +997,27 @@ export class ConversationsService {
                 }),
               );
 
+            const {
+              data: mentions,
+              error: mentionsError,
+            } = await supabase
+              .from('message_mentions')
+              .select(`
+                user_id,
+                username,
+                display_name
+              `)
+              .eq(
+                'message_id',
+                message.id,
+              );
+
+            if (mentionsError) {
+              throw new BadRequestException(
+                mentionsError.message,
+              );
+            }
+
             return {
               id: message.id,
               senderId:
@@ -640,6 +1034,17 @@ export class ConversationsService {
                 message.seen_at,
               replyToMessageId:
                 message.reply_to_message_id,
+              mentions:
+                (mentions ?? []).map(
+                  (mention: any) => ({
+                    userId:
+                      mention.user_id,
+                    username:
+                      mention.username,
+                    displayName:
+                      mention.display_name,
+                  }),
+                ),
               media,
               reactions:
                 formattedReactions,
@@ -711,6 +1116,78 @@ export class ConversationsService {
       );
     }
 
+    // validate mentions for group conversations
+    if (
+      dto.mentions &&
+      dto.mentions.length > 0
+    ) {
+      const {
+        data: conversation,
+        error: conversationError,
+      } = await supabase
+        .from('conversations')
+        .select('id, type')
+        .eq('id', conversationId)
+        .maybeSingle();
+
+      if (conversationError) {
+        throw new BadRequestException(
+          conversationError.message,
+        );
+      }
+
+      if (!conversation) {
+        throw new BadRequestException(
+          'Conversation not found.',
+        );
+      }
+
+      if (conversation.type !== 'group') {
+        throw new BadRequestException(
+          'Mentions are only supported in group conversations.',
+        );
+      }
+
+      const mentionedUserIds = [
+        ...new Set(
+          dto.mentions.map(
+            (mention) => mention.userId,
+          ),
+        ),
+      ];
+
+      const {
+        data: mentionedMembers,
+        error: mentionedMembersError,
+      } = await supabase
+        .from('conversation_members')
+        .select('user_id')
+        .eq(
+          'conversation_id',
+          conversationId,
+        )
+        .in(
+          'user_id',
+          mentionedUserIds,
+        );
+
+      if (mentionedMembersError) {
+        throw new BadRequestException(
+          mentionedMembersError.message,
+        );
+      }
+
+      if (
+        !mentionedMembers ||
+        mentionedMembers.length !==
+          mentionedUserIds.length
+      ) {
+        throw new BadRequestException(
+          'One or more mentioned users are not members of this group.',
+        );
+      }
+    }
+
     // create the message
     const {
       data: message,
@@ -732,6 +1209,40 @@ export class ConversationsService {
       throw new BadRequestException(
         messageError.message,
       );
+    }
+
+    // save mentions attached to the message
+    if (
+      dto.mentions &&
+      dto.mentions.length > 0
+    ) {
+      const mentionRecords =
+        dto.mentions.map(
+          (mention) => ({
+            message_id: message.id,
+            user_id: mention.userId,
+            username: mention.username,
+            display_name:
+              mention.displayName ?? null,
+          }),
+        );
+
+      const {
+        error: mentionsError,
+      } = await supabase
+        .from('message_mentions')
+        .insert(mentionRecords);
+
+      if (mentionsError) {
+        await supabase
+          .from('messages')
+          .delete()
+          .eq('id', message.id);
+
+        throw new BadRequestException(
+          mentionsError.message,
+        );
+      }
     }
 
     let uploadedMediaId:
@@ -893,6 +1404,7 @@ export class ConversationsService {
         'Message sent successfully.',
       data: {
         ...message,
+        mentions: dto.mentions ?? [],
         media: media ?? [],
       },
     };
@@ -1129,7 +1641,80 @@ export class ConversationsService {
       );
     }
 
-    // only update messages sent by the current user
+    // get the conversation type
+    const {
+      data: conversation,
+      error: conversationError,
+    } = await supabase
+      .from('conversations')
+      .select('id, type')
+      .eq('id', conversationId)
+      .maybeSingle();
+
+    if (conversationError) {
+      throw new BadRequestException(
+        conversationError.message,
+      );
+    }
+
+    if (!conversation) {
+      throw new BadRequestException(
+        'Conversation not found.',
+      );
+    }
+
+    // validate mentions for group conversations
+    if (
+      dto.mentions &&
+      dto.mentions.length > 0
+    ) {
+      if (conversation.type !== 'group') {
+        throw new BadRequestException(
+          'Mentions are only supported in group conversations.',
+        );
+      }
+
+      const mentionedUserIds = [
+        ...new Set(
+          dto.mentions.map(
+            (mention) => mention.userId,
+          ),
+        ),
+      ];
+
+      const {
+        data: mentionedMembers,
+        error: mentionedMembersError,
+      } = await supabase
+        .from('conversation_members')
+        .select('user_id')
+        .eq(
+          'conversation_id',
+          conversationId,
+        )
+        .in(
+          'user_id',
+          mentionedUserIds,
+        );
+
+      if (mentionedMembersError) {
+        throw new BadRequestException(
+          mentionedMembersError.message,
+        );
+      }
+
+      if (
+        !mentionedMembers ||
+        mentionedMembers.length !==
+          mentionedUserIds.length
+      ) {
+        throw new BadRequestException(
+          'One or more mentioned users are not members of this group.',
+        );
+      }
+    }
+
+    // update only the current user's message
     const {
       data,
       error,
@@ -1159,11 +1744,60 @@ export class ConversationsService {
       );
     }
 
+    // remove old mentions
+    const {
+      error: deleteMentionsError,
+    } = await supabase
+      .from('message_mentions')
+      .delete()
+      .eq(
+        'message_id',
+        messageId,
+      );
+
+    if (deleteMentionsError) {
+      throw new BadRequestException(
+        deleteMentionsError.message,
+      );
+    }
+
+    // save the new mentions
+    if (
+      dto.mentions &&
+      dto.mentions.length > 0
+    ) {
+      const mentionRecords =
+        dto.mentions.map(
+          (mention) => ({
+            message_id: messageId,
+            user_id: mention.userId,
+            username: mention.username,
+            display_name:
+              mention.displayName ?? null,
+          }),
+        );
+
+      const {
+        error: mentionsError,
+      } = await supabase
+        .from('message_mentions')
+        .insert(mentionRecords);
+
+      if (mentionsError) {
+        throw new BadRequestException(
+          mentionsError.message,
+        );
+      }
+    }
+
     return {
       success: true,
       message:
         'Message updated successfully.',
-      data,
+      data: {
+        ...data,
+        mentions: dto.mentions ?? [],
+      },
     };
   }
 
