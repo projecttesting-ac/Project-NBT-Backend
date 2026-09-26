@@ -19,7 +19,7 @@ import { ConversationsService } from './conversations.service';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
-
+import { AddGroupMembersDto } from './dto/add-group-members.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { ForwardMessageDto } from './dto/forward-message.dto';
@@ -42,11 +42,13 @@ export class ConversationsController {
       ttl: 60 * 1000,
     },
   })
+
   @Post('group')
   createGroup(
     @CurrentUser() user: any,
     @Body() dto: CreateGroupDto,
   ) {
+
     return this.conversationsService.createGroup(
       user.id,
       dto,
@@ -60,6 +62,7 @@ export class ConversationsController {
       ttl: 60 * 1000,
     },
   })
+
   @Post(':targetUserId')
   @UseInterceptors(FileInterceptor('file'))
   createConversation(
@@ -68,6 +71,7 @@ export class ConversationsController {
     @Body() dto: SendMessageDto,
     @UploadedFile() file: any,
   ) {
+
     // create the conversation and send the first message
     return this.conversationsService.createConversationAndSendMessage(
       user.id,
@@ -83,6 +87,7 @@ export class ConversationsController {
     @CurrentUser() user: any,
     @Query() pagination: PaginationDto,
   ) {
+
     // get the user's conversations
     return this.conversationsService.getConversations(
       user.id,
@@ -97,12 +102,14 @@ export class ConversationsController {
       ttl: 60 * 1000,
     },
   })
+
   @Get(':conversationId/mention-users')
   getGroupMentionUsers(
     @CurrentUser() user: any,
     @Param('conversationId') conversationId: string,
     @Query() dto: GroupMentionQueryDto,
   ) {
+
     return this.conversationsService.getGroupMentionUsers(
       user.id,
       conversationId,
@@ -117,11 +124,13 @@ export class ConversationsController {
       ttl: 60 * 1000,
     },
   })
+
   @Get(':conversationId/members')
   getGroupMembers(
     @CurrentUser() user: any,
     @Param('conversationId') conversationId: string,
   ) {
+
     return this.conversationsService.getGroupMembers(
       user.id,
       conversationId,
@@ -135,12 +144,32 @@ export class ConversationsController {
       ttl: 60 * 1000,
     },
   })
+@UseGuards(JwtAuthGuard)
+@Throttle({
+  default: {
+    limit: 20,
+    ttl: 60 * 1000,
+  },
+})
+@Post(':conversationId/members')
+addGroupMembers(
+  @CurrentUser() user: any,
+  @Param('conversationId') conversationId: string,
+  @Body() dto: AddGroupMembersDto,
+) {
+  return this.conversationsService.addGroupMembers(
+    user.id,
+    conversationId,
+    dto,
+  );
+}
   @Get(':conversationId/messages')
   getMessages(
     @CurrentUser() user: any,
     @Param('conversationId') conversationId: string,
     @Query() pagination: PaginationDto,
   ) {
+
     // get messages from a conversation
     return this.conversationsService.getMessages(
       user.id,
@@ -156,6 +185,7 @@ export class ConversationsController {
       ttl: 60 * 1000,
     },
   })
+
   @Post(':conversationId/messages')
   @UseInterceptors(FileInterceptor('file'))
   sendMessage(
@@ -164,6 +194,7 @@ export class ConversationsController {
     @Body() dto: SendMessageDto,
     @UploadedFile() file: any,
   ) {
+
     // send a message with optional media
     return this.conversationsService.sendMessage(
       user.id,
@@ -179,6 +210,7 @@ export class ConversationsController {
     @CurrentUser() user: any,
     @Param('conversationId') conversationId: string,
   ) {
+
     // mark all messages as read
     return this.conversationsService.markMessagesAsRead(
       user.id,
@@ -193,6 +225,7 @@ export class ConversationsController {
     @Param('conversationId') conversationId: string,
     @Param('messageId') messageId: string,
   ) {
+
     // mark the message as delivered
     return this.conversationsService.markMessageAsDelivered(
       user.id,
@@ -208,6 +241,7 @@ export class ConversationsController {
     @Param('conversationId') conversationId: string,
     @Param('messageId') messageId: string,
   ) {
+    
     // mark the message as seen
     return this.conversationsService.markMessageAsSeen(
       user.id,
@@ -223,6 +257,7 @@ export class ConversationsController {
       ttl: 60 * 1000,
     },
   })
+
   @Patch(':conversationId/messages/:messageId')
   updateMessage(
     @CurrentUser() user: any,
@@ -230,6 +265,7 @@ export class ConversationsController {
     @Param('messageId') messageId: string,
     @Body() dto: UpdateMessageDto,
   ) {
+
     // edit a message
     return this.conversationsService.updateMessage(
       user.id,
@@ -246,12 +282,14 @@ export class ConversationsController {
       ttl: 60 * 1000,
     },
   })
+
   @Delete(':conversationId/messages/:messageId')
   deleteMessage(
     @CurrentUser() user: any,
     @Param('conversationId') conversationId: string,
     @Param('messageId') messageId: string,
   ) {
+
     // delete a message
     return this.conversationsService.deleteMessage(
       user.id,
@@ -267,6 +305,7 @@ export class ConversationsController {
       ttl: 60 * 1000,
     },
   })
+
   @Post(':conversationId/messages/:messageId/forward')
   forwardMessage(
     @CurrentUser() user: any,
@@ -274,6 +313,7 @@ export class ConversationsController {
     @Param('messageId') messageId: string,
     @Body() dto: ForwardMessageDto,
   ) {
+
     // forward a message to another conversation
     return this.conversationsService.forwardMessage(
       user.id,
@@ -290,6 +330,7 @@ export class ConversationsController {
       ttl: 60 * 1000,
     },
   })
+
   @Post(':conversationId/messages/:messageId/reaction')
   addReaction(
     @CurrentUser() user: any,
@@ -297,6 +338,7 @@ export class ConversationsController {
     @Param('messageId') messageId: string,
     @Body() dto: ReactMessageDto,
   ) {
+
     // add or change a reaction
     return this.conversationsService.addReaction(
       user.id,
@@ -313,12 +355,14 @@ export class ConversationsController {
       ttl: 60 * 1000,
     },
   })
+
   @Delete(':conversationId/messages/:messageId/reaction')
   removeReaction(
     @CurrentUser() user: any,
     @Param('conversationId') conversationId: string,
     @Param('messageId') messageId: string,
   ) {
+
     // remove the reaction
     return this.conversationsService.removeReaction(
       user.id,

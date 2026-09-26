@@ -8,7 +8,7 @@ import { SendMessageDto } from './dto/send-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { ForwardMessageDto } from './dto/forward-message.dto';
 import { CreateGroupDto } from './dto/create-group.dto';
-
+import { AddGroupMembersDto } from './dto/add-group-members.dto';
 import { supabase } from '../config/supabase';
 import { MediaService } from '../media/media.service';
 import { PaginationDto } from '../common/dto/pagination.dto';
@@ -23,6 +23,7 @@ export class ConversationsService {
     userId: string,
     dto: CreateGroupDto,
   ) {
+
     const memberIds = [
       ...new Set([
         userId,
@@ -114,6 +115,7 @@ export class ConversationsService {
     userId: string,
     targetUserId: string,
   ) {
+    
     // don't allow users to message themselves
     if (userId === targetUserId) {
       throw new BadRequestException(
@@ -749,7 +751,215 @@ export class ConversationsService {
       members: formattedMembers,
     };
   }
+async addGroupMembers(
+  userId: string,
+  conversationId: string,
+  dto: AddGroupMembersDto,
+) {
+  // make sure the requester belongs to the conversation
+  const {
+    data: membership,
+    error: membershipError,
+  } = await supabase
+    .from('conversation_members')
+    .select('conversation_id')
+    .eq('conversation_id', conversationId)
+    .eq('user_id', userId)
+    .maybeSingle();
 
+  if (membershipError) {
+    throw new BadRequestException(
+      membershipError.message,
+    );
+  }
+
+  if (!membership) {
+    throw new BadRequestException(
+      'You are not a member of this conversation.',
+    );
+  }
+
+  // get the conversation
+  const {
+    data: conversation,
+    error: conversationError,
+  } = await supabase
+    .from('conversations')
+    .select('id, type, name, created_by')
+    .eq('id', conversationId)
+    .maybeSingle();
+
+  if (conversationError) {
+    throw new BadRequestException(
+      conversationError.message,
+    );
+  }
+
+  if (!conversation) {
+    throw new BadRequestException(
+      'Conversation not found.',
+    );
+  }
+
+  // only groups can have members added
+  if (conversation.type !== 'group') {
+    throw new BadRequestException(
+      'Members can only be added to group conversations.',
+    );
+  }
+
+  // for now, only the group creator can add members
+  if (conversation.created_by !== userId) {
+    throw new BadRequestException(
+      'Only the group creator can add members.',
+    );
+  }
+
+  // remove duplicate IDs
+  const memberIds = [
+    ...new Set(dto.memberIds),
+  ];
+
+  // don't add the creator again
+  const newMemberIds = memberIds.filter(
+    (memberId) => memberId !== userId,
+  );
+
+  if (newMemberIds.length === 0) {
+    throw new BadRequestException(
+      'Please provide at least one new member.',
+    );
+  }
+
+  // make sure all requested users exist
+  const {
+    data: users,
+    error: usersError,
+  } = await supabase
+    .from('users')
+    .select(`
+      id,
+      display_name,
+      username,
+      avatar_url,
+      is_online,
+      last_seen
+    `)
+    .in('id', newMemberIds);
+
+  if (usersError) {
+    throw new BadRequestException(
+      usersError.message,
+    );
+  }
+
+  if (
+    !users ||
+    users.length !== newMemberIds.length
+  ) {
+    throw new BadRequestException(
+      'One or more users were not found.',
+    );
+  }
+
+  // check which users are already members
+  const {
+    data: existingMembers,
+    error: existingMembersError,
+  } = await supabase
+    .from('conversation_members')
+    .select('user_id')
+    .eq('conversation_id', conversationId)
+    .in('user_id', newMemberIds);
+
+  if (existingMembersError) {
+    throw new BadRequestException(
+      existingMembersError.message,
+    );
+  }
+
+  const existingMemberIds = new Set(
+    (existingMembers ?? []).map(
+      (member) => member.user_id,
+    ),
+  );
+
+  const usersToAdd = newMemberIds.filter(
+    (memberId) =>
+      !existingMemberIds.has(memberId),
+  );
+
+  if (usersToAdd.length === 0) {
+    throw new BadRequestException(
+      'All selected users are already members of this group.',
+    );
+  }
+
+  // insert new members
+  const memberRecords = usersToAdd.map(
+    (memberId) => ({
+      conversation_id: conversationId,
+      user_id: memberId,
+    }),
+  );
+
+  const {
+    error: insertError,
+  } = await supabase
+    .from('conversation_members')
+    .insert(memberRecords);
+
+  if (insertError) {
+    throw new BadRequestException(
+      insertError.message,
+    );
+  }
+
+  // return the newly added members
+  const {
+    data: addedMembers,
+    error: addedMembersError,
+  } = await supabase
+    .from('users')
+    .select(`
+      id,
+      display_name,
+      username,
+      avatar_url,
+      is_online,
+      last_seen
+    `)
+    .in('id', usersToAdd);
+
+  if (addedMembersError) {
+    throw new BadRequestException(
+      addedMembersError.message,
+    );
+  }
+
+  return {
+    success: true,
+    message: 'Members added successfully.',
+    conversation: {
+      id: conversation.id,
+      name: conversation.name,
+    },
+    addedMembers: (addedMembers ?? []).map(
+      (user) => ({
+        id: user.id,
+        username: user.username,
+        displayName:
+          user.display_name,
+        avatarUrl:
+          user.avatar_url,
+        isOnline:
+          user.is_online,
+        lastSeen:
+          user.last_seen,
+      }),
+    ),
+  };
+}
   async getMessages(
     userId: string,
     conversationId: string,
