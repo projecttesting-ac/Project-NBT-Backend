@@ -3,14 +3,20 @@ import {
   Injectable,
 } from '@nestjs/common';
 
-import { CreateEventDto } from './dto/create-event.dto';
 import { randomUUID } from 'crypto';
+
+import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 import { supabase } from '../config/supabase';
 import { PaginationDto } from '../common/dto/pagination.dto';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class EventsService {
+  constructor(
+    private readonly notificationsService: NotificationsService,
+  ) {}
+
   private convertEventDate(
     eventDate?: string,
   ): string | undefined {
@@ -59,6 +65,49 @@ export class EventsService {
     }
 
     return `${year}-${month}-${day}`;
+  }
+
+  private async notifyEventAttendees(
+    eventId: string,
+    type: string,
+    title: string,
+    message: string,
+    actorId?: string,
+  ) {
+    const {
+      data: attendees,
+      error,
+    } = await supabase
+      .from('event_attendees')
+      .select('user_id')
+      .eq('event_id', eventId);
+
+    if (error) {
+      console.error(
+        'Event attendee lookup for notification failed:',
+        error.message,
+      );
+
+      return;
+    }
+
+    if (!attendees || attendees.length === 0) {
+      return;
+    }
+
+    await Promise.all(
+      attendees.map((attendee) =>
+        this.notificationsService.tryCreateNotification(
+          attendee.user_id,
+          type,
+          title,
+          message,
+          actorId,
+          eventId,
+          'EVENT',
+        ),
+      ),
+    );
   }
 
   async uploadPoster(
@@ -168,6 +217,54 @@ export class EventsService {
       );
     }
 
+    const events = data ?? [];
+
+    const eventIds = events.map(
+      (event) => event.id,
+    );
+
+    let attendeeCounts: Record<
+      string,
+      number
+    > = {};
+
+    if (eventIds.length > 0) {
+      const {
+        data: attendees,
+        error: attendeeError,
+      } = await supabase
+        .from('event_attendees')
+        .select('event_id')
+        .in('event_id', eventIds);
+
+      if (attendeeError) {
+        throw new BadRequestException(
+          attendeeError.message,
+        );
+      }
+
+      attendeeCounts = (attendees ?? []).reduce(
+        (
+          counts: Record<string, number>,
+          attendee,
+        ) => {
+          counts[attendee.event_id] =
+            (counts[attendee.event_id] ?? 0) + 1;
+
+          return counts;
+        },
+        {},
+      );
+    }
+
+    const eventsWithCounts = events.map(
+      (event) => ({
+        ...event,
+        attendeeCount:
+          attendeeCounts[event.id] ?? 0,
+      }),
+    );
+
     const total = count ?? 0;
     const totalPages = Math.ceil(
       total / limit,
@@ -175,7 +272,7 @@ export class EventsService {
 
     return {
       success: true,
-      events: data ?? [],
+      events: eventsWithCounts,
       pagination: {
         page,
         limit,
@@ -196,6 +293,156 @@ export class EventsService {
       .eq('id', id)
       .single();
 
+    if (error || !data) {
+      throw new BadRequestException(
+        'Event not found.',
+      );
+    }
+
+    const {
+      count,
+      error: attendeeError,
+    } = await supabase
+      .from('event_attendees')
+      .select('id', {
+        count: 'exact',
+        head: true,
+      })
+      .eq('event_id', id);
+
+    if (attendeeError) {
+      throw new BadRequestException(
+        attendeeError.message,
+      );
+    }
+
+    return {
+      success: true,
+      event: {
+        ...data,
+        attendeeCount: count ?? 0,
+      },
+    };
+  }
+
+  async rsvpToEvent(
+    userId: string,
+    eventId: string,
+  ) {
+    const {
+      data: event,
+      error: eventError,
+    } = await supabase
+      .from('events')
+      .select('id, status')
+      .eq('id', eventId)
+      .single();
+
+    if (eventError || !event) {
+      throw new BadRequestException(
+        'Event not found.',
+      );
+    }
+
+    if (event.status !== 'published') {
+      throw new BadRequestException(
+        'You can only RSVP to a published event.',
+      );
+    }
+
+    const {
+      data: existing,
+      error: existingError,
+    } = await supabase
+      .from('event_attendees')
+      .select('id')
+      .eq('event_id', eventId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (existingError) {
+      throw new BadRequestException(
+        existingError.message,
+      );
+    }
+
+    if (existing) {
+      return {
+        success: true,
+        message: 'You have already RSVP’d to this event.',
+        isRsvped: true,
+      };
+    }
+
+    const {
+      data,
+      error,
+    } = await supabase
+      .from('event_attendees')
+      .insert({
+        event_id: eventId,
+        user_id: userId,
+      })
+      .select()
+      .single();
+
+    if (error) {
+      throw new BadRequestException(
+        error.message,
+      );
+    }
+
+    await this.notificationsService.tryCreateNotification(
+      userId,
+      'RSVP_CONFIRMED',
+      'RSVP confirmed',
+      'Your RSVP for the event has been confirmed.',
+      undefined,
+      eventId,
+      'EVENT',
+    );
+
+    return {
+      success: true,
+      message: 'RSVP confirmed successfully.',
+      isRsvped: true,
+      attendee: data,
+    };
+  }
+
+  async cancelRsvp(
+    userId: string,
+    eventId: string,
+  ) {
+    const {
+      data: existing,
+      error: findError,
+    } = await supabase
+      .from('event_attendees')
+      .select('id')
+      .eq('event_id', eventId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (findError) {
+      throw new BadRequestException(
+        findError.message,
+      );
+    }
+
+    if (!existing) {
+      return {
+        success: true,
+        message: 'You have not RSVP’d to this event.',
+        isRsvped: false,
+      };
+    }
+
+    const { error } = await supabase
+      .from('event_attendees')
+      .delete()
+      .eq('id', existing.id);
+
     if (error) {
       throw new BadRequestException(
         error.message,
@@ -204,7 +451,103 @@ export class EventsService {
 
     return {
       success: true,
-      event: data,
+      message: 'RSVP cancelled successfully.',
+      isRsvped: false,
+    };
+  }
+
+  async getEventAttendees(
+    eventId: string,
+  ) {
+    const {
+      data: event,
+      error: eventError,
+    } = await supabase
+      .from('events')
+      .select('id')
+      .eq('id', eventId)
+      .single();
+
+    if (eventError || !event) {
+      throw new BadRequestException(
+        'Event not found.',
+      );
+    }
+
+    const {
+      data: attendees,
+      error,
+    } = await supabase
+      .from('event_attendees')
+      .select(
+        `
+        id,
+        user_id,
+        created_at,
+        users:user_id (
+          id,
+          username,
+          display_name,
+          avatar_url
+        )
+        `,
+      )
+      .eq('event_id', eventId)
+      .order('created_at', {
+        ascending: true,
+      });
+
+    if (error) {
+      throw new BadRequestException(
+        error.message,
+      );
+    }
+
+    return {
+      success: true,
+      attendees: attendees ?? [],
+      count: attendees?.length ?? 0,
+    };
+  }
+
+  async getRsvpStatus(
+    userId: string,
+    eventId: string,
+  ) {
+    const {
+      data: event,
+      error: eventError,
+    } = await supabase
+      .from('events')
+      .select('id')
+      .eq('id', eventId)
+      .single();
+
+    if (eventError || !event) {
+      throw new BadRequestException(
+        'Event not found.',
+      );
+    }
+
+    const {
+      data,
+      error,
+    } = await supabase
+      .from('event_attendees')
+      .select('id')
+      .eq('event_id', eventId)
+      .eq('user_id', userId)
+      .maybeSingle();
+
+    if (error) {
+      throw new BadRequestException(
+        error.message,
+      );
+    }
+
+    return {
+      success: true,
+      isRsvped: !!data,
     };
   }
 
@@ -213,7 +556,6 @@ export class EventsService {
     eventId: string,
     dto: UpdateEventDto,
   ) {
-    // check if the event exists
     const {
       data: event,
       error: findError,
@@ -229,7 +571,6 @@ export class EventsService {
       );
     }
 
-    // only the organizer can update
     if (event.organizer_id !== userId) {
       throw new BadRequestException(
         'You are not allowed to update this event.',
@@ -295,6 +636,14 @@ export class EventsService {
       );
     }
 
+    await this.notifyEventAttendees(
+      eventId,
+      'EVENT_UPDATE',
+      'Event updated',
+      'An event you RSVP’d to has been updated.',
+      userId,
+    );
+
     return {
       success: true,
       message: 'Event updated successfully.',
@@ -306,7 +655,6 @@ export class EventsService {
     userId: string,
     eventId: string,
   ) {
-    // check if the event exists
     const {
       data: event,
       error: findError,
@@ -322,12 +670,19 @@ export class EventsService {
       );
     }
 
-    // only the organizer can delete
     if (event.organizer_id !== userId) {
       throw new BadRequestException(
         'You are not allowed to delete this event.',
       );
     }
+
+    await this.notifyEventAttendees(
+      eventId,
+      'EVENT_UPDATE',
+      'Event cancelled',
+      'An event you RSVP’d to has been cancelled.',
+      userId,
+    );
 
     const { error } = await supabase
       .from('events')
@@ -351,13 +706,12 @@ export class EventsService {
     eventId: string,
     status: 'draft' | 'published',
   ) {
-    // check if the event exists
     const {
       data: event,
       error: findError,
     } = await supabase
       .from('events')
-      .select('organizer_id')
+      .select('organizer_id, status')
       .eq('id', eventId)
       .single();
 
@@ -367,7 +721,6 @@ export class EventsService {
       );
     }
 
-    // only the organizer can change the status
     if (event.organizer_id !== userId) {
       throw new BadRequestException(
         'You are not allowed to update this event.',
@@ -388,6 +741,19 @@ export class EventsService {
     if (error) {
       throw new BadRequestException(
         error.message,
+      );
+    }
+
+    if (
+      status === 'published' &&
+      event.status !== 'published'
+    ) {
+      await this.notifyEventAttendees(
+        eventId,
+        'EVENT_UPDATE',
+        'Event published',
+        'An event you RSVP’d to is now published.',
+        userId,
       );
     }
 

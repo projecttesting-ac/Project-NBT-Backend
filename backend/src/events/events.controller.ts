@@ -22,6 +22,7 @@ import { UpdateEventStatusDto } from './dto/update-event-status.dto';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
+
 import { PaginationDto } from '../common/dto/pagination.dto';
 
 import { EventsService } from './events.service';
@@ -51,7 +52,6 @@ export class EventsController {
     @CurrentUser() user: any,
     @UploadedFile() file: any,
   ) {
-    // upload the event poster
     return this.eventsService.uploadPoster(
       user.id,
       file,
@@ -70,7 +70,6 @@ export class EventsController {
     @CurrentUser() user: any,
     @Body() dto: CreateEventDto,
   ) {
-    // create a new event
     return this.eventsService.create(
       user.id,
       dto,
@@ -87,9 +86,77 @@ export class EventsController {
   getAllEvents(
     @Query() pagination: PaginationDto,
   ) {
-    // get events with pagination
     return this.eventsService.findAll(
       pagination,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 20,
+      ttl: 60 * 1000,
+    },
+  })
+  @Post(':eventId/rsvp')
+  rsvpToEvent(
+    @CurrentUser() user: any,
+    @Param('eventId') eventId: string,
+  ) {
+    return this.eventsService.rsvpToEvent(
+      user.id,
+      eventId,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 20,
+      ttl: 60 * 1000,
+    },
+  })
+  @Delete(':eventId/rsvp')
+  cancelRsvp(
+    @CurrentUser() user: any,
+    @Param('eventId') eventId: string,
+  ) {
+    return this.eventsService.cancelRsvp(
+      user.id,
+      eventId,
+    );
+  }
+
+  @Throttle({
+    default: {
+      limit: 30,
+      ttl: 60 * 1000,
+    },
+  })
+  @Get(':eventId/attendees')
+  getEventAttendees(
+    @Param('eventId') eventId: string,
+  ) {
+    return this.eventsService.getEventAttendees(
+      eventId,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Throttle({
+    default: {
+      limit: 60,
+      ttl: 60 * 1000,
+    },
+  })
+  @Get(':eventId/rsvp-status')
+  getRsvpStatus(
+    @CurrentUser() user: any,
+    @Param('eventId') eventId: string,
+  ) {
+    return this.eventsService.getRsvpStatus(
+      user.id,
+      eventId,
     );
   }
 
@@ -103,7 +170,6 @@ export class EventsController {
   getEventById(
     @Param('id') id: string,
   ) {
-    // get a single event
     return this.eventsService.findOne(id);
   }
 
@@ -120,7 +186,6 @@ export class EventsController {
     @Param('id') id: string,
     @Body() dto: UpdateEventDto,
   ) {
-    // update event details
     return this.eventsService.update(
       user.id,
       id,
@@ -140,7 +205,6 @@ export class EventsController {
     @CurrentUser() user: any,
     @Param('id') id: string,
   ) {
-    // delete the event
     return this.eventsService.remove(
       user.id,
       id,
@@ -160,7 +224,6 @@ export class EventsController {
     @Param('id') id: string,
     @Body() dto: UpdateEventStatusDto,
   ) {
-    // change the event status
     return this.eventsService.updateStatus(
       user.id,
       id,

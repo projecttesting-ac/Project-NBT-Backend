@@ -23,7 +23,6 @@ export class FriendsService {
       );
     }
 
-    // check if the receiver exists
     const {
       data: receiver,
       error: receiverError,
@@ -45,7 +44,6 @@ export class FriendsService {
       );
     }
 
-    // check if they are already friends
     const {
       data: friendship,
       error: friendshipError,
@@ -70,9 +68,8 @@ export class FriendsService {
       );
     }
 
-    // check for an existing pending request
     const {
-      data: existingRequest,
+      data: existingRequests,
       error: requestError,
     } = await supabase
       .from('friend_requests')
@@ -82,7 +79,7 @@ export class FriendsService {
       .or(
         `and(sender_id.eq.${senderId},receiver_id.eq.${receiverId},status.eq.pending),and(sender_id.eq.${receiverId},receiver_id.eq.${senderId},status.eq.pending)`,
       )
-      .maybeSingle();
+      .limit(1);
 
     if (requestError) {
       throw new BadRequestException(
@@ -90,9 +87,13 @@ export class FriendsService {
       );
     }
 
+    const existingRequest =
+      existingRequests?.[0] ?? null;
+
     if (existingRequest) {
       if (
-        existingRequest.sender_id === senderId
+        existingRequest.sender_id ===
+        senderId
       ) {
         throw new ConflictException(
           'Friend request already sent.',
@@ -104,7 +105,6 @@ export class FriendsService {
       );
     }
 
-    // create the friend request
     const {
       data: request,
       error: insertError,
@@ -124,24 +124,15 @@ export class FriendsService {
       );
     }
 
-    // notify the receiver
-    try {
-      await this.notificationsService.createNotification(
-        receiverId,
-        'FRIEND_REQUEST',
-        'New friend request',
-        'You received a new friend request.',
-        senderId,
-        request.id,
-        'friend_request',
-      );
-    } catch (notificationError) {
-      // notification failure should not fail the request
-      console.error(
-        'Failed to create friend request notification:',
-        notificationError,
-      );
-    }
+    await this.notificationsService.tryCreateNotification(
+      receiverId,
+      'FRIEND_REQUEST',
+      'New friend request',
+      'You received a new friend request.',
+      senderId,
+      request.id,
+      'friend_request',
+    );
 
     return {
       success: true,
@@ -151,7 +142,9 @@ export class FriendsService {
     };
   }
 
-  async getReceivedRequests(userId: string) {
+  async getReceivedRequests(
+    userId: string,
+  ) {
     const {
       data: requests,
       error,
@@ -184,7 +177,6 @@ export class FriendsService {
       };
     }
 
-    // get profiles of the senders
     const senderIds = requests.map(
       (request) => request.sender_id,
     );
@@ -218,17 +210,17 @@ export class FriendsService {
       ]),
     );
 
-    const result = requests.map(
-      (request) => ({
-        ...request,
-        sender:
-          userMap.get(request.sender_id) ?? null,
-      }),
-    );
-
     return {
       success: true,
-      requests: result,
+      requests: requests.map(
+        (request) => ({
+          ...request,
+          sender:
+            userMap.get(
+              request.sender_id,
+            ) ?? null,
+        }),
+      ),
     };
   }
 
@@ -259,7 +251,6 @@ export class FriendsService {
       );
     }
 
-    // only the receiver can accept
     if (request.receiver_id !== userId) {
       throw new ConflictException(
         'You cannot accept this friend request.',
@@ -272,7 +263,6 @@ export class FriendsService {
       );
     }
 
-    // create the first friendship
     const {
       error: firstError,
     } = await supabase
@@ -288,7 +278,6 @@ export class FriendsService {
       );
     }
 
-    // create the reverse friendship
     const {
       error: secondError,
     } = await supabase
@@ -299,7 +288,6 @@ export class FriendsService {
       });
 
     if (secondError) {
-      // remove the first row if the second one fails
       await supabase
         .from('friendships')
         .delete()
@@ -317,7 +305,6 @@ export class FriendsService {
       );
     }
 
-    // mark the request as accepted
     const {
       error: updateError,
     } = await supabase
@@ -335,24 +322,15 @@ export class FriendsService {
       );
     }
 
-    // notify the original sender
-    try {
-      await this.notificationsService.createNotification(
-        request.sender_id,
-        'FRIEND_REQUEST_ACCEPTED',
-        'Friend request accepted',
-        'Your friend request was accepted.',
-        userId,
-        request.id,
-        'friend_request',
-      );
-    } catch (notificationError) {
-      // notification failure should not fail the action
-      console.error(
-        'Failed to create friend request accepted notification:',
-        notificationError,
-      );
-    }
+    await this.notificationsService.tryCreateNotification(
+      request.sender_id,
+      'FRIEND_REQUEST_ACCEPTED',
+      'Friend request accepted',
+      'Your friend request was accepted.',
+      userId,
+      request.id,
+      'friend_request',
+    );
 
     return {
       success: true,
@@ -424,7 +402,9 @@ export class FriendsService {
     };
   }
 
-  async getSentRequests(userId: string) {
+  async getSentRequests(
+    userId: string,
+  ) {
     const {
       data: requests,
       error,
@@ -563,7 +543,9 @@ export class FriendsService {
     };
   }
 
-  async getFriends(userId: string) {
+  async getFriends(
+    userId: string,
+  ) {
     const {
       data: friendships,
       error,
@@ -633,7 +615,8 @@ export class FriendsService {
       count: friendIds.length,
       friends: friendships.map(
         (friendship) => ({
-          friendshipId: friendship.id,
+          friendshipId:
+            friendship.id,
           createdAt:
             friendship.created_at,
           user:
@@ -679,7 +662,6 @@ export class FriendsService {
       );
     }
 
-    // remove both sides of the friendship
     const {
       error: deleteError,
     } = await supabase
@@ -746,8 +728,9 @@ export class FriendsService {
     };
   }
 
-  async getSuggestions(userId: string) {
-    // get the user's current friends
+  async getSuggestions(
+    userId: string,
+  ) {
     const {
       data: friendships,
       error: friendshipError,
@@ -768,7 +751,6 @@ export class FriendsService {
       (item) => item.friend_id,
     );
 
-    // get pending requests sent by the user
     const {
       data: sentRequests,
       error: sentError,
@@ -784,7 +766,6 @@ export class FriendsService {
       );
     }
 
-    // get pending requests received by the user
     const {
       data: receivedRequests,
       error: receivedError,
@@ -947,7 +928,6 @@ export class FriendsService {
       };
     }
 
-    // get the logged-in user's friends
     const {
       data: myFriendships,
       error: myFriendsError,
@@ -962,14 +942,16 @@ export class FriendsService {
       );
     }
 
-    // get the other user's friends
     const {
       data: otherFriendships,
       error: otherFriendsError,
     } = await supabase
       .from('friendships')
       .select('friend_id')
-      .eq('user_id', otherUserId);
+      .eq(
+        'user_id',
+        otherUserId,
+      );
 
     if (otherFriendsError) {
       throw new BadRequestException(
@@ -983,7 +965,6 @@ export class FriendsService {
       ),
     );
 
-    // find users who are friends with both
     const mutualFriendIds = (
       otherFriendships ?? []
     )
@@ -994,7 +975,9 @@ export class FriendsService {
         myFriendIds.has(friendId),
       );
 
-    if (mutualFriendIds.length === 0) {
+    if (
+      mutualFriendIds.length === 0
+    ) {
       return {
         success: true,
         count: 0,
@@ -1002,7 +985,6 @@ export class FriendsService {
       };
     }
 
-    // get profiles of mutual friends
     const {
       data: mutualFriends,
       error: usersError,

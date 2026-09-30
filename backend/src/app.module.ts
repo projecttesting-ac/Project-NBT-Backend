@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 
 import { NotificationsModule } from './notifications/notifications.module';
 import { AppController } from './app.controller';
@@ -25,13 +26,12 @@ import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
       isGlobal: true,
     }),
 
+    ScheduleModule.forRoot(),
+
     ThrottlerModule.forRoot({
       throttlers: [
         {
           name: 'default',
-
-          // Global fallback:
-          // 100 requests / 1 minute
           ttl: 60_000,
           limit: 100,
         },

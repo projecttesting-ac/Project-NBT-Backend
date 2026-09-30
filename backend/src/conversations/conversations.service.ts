@@ -82,6 +82,10 @@ export class ConversationsService {
       (memberId) => ({
         conversation_id: conversation.id,
         user_id: memberId,
+        role:
+          memberId === userId
+            ? 'president'
+            : 'member',
       }),
     );
 
@@ -315,7 +319,7 @@ export class ConversationsService {
       count: total,
     } = await supabase
       .from('conversation_members')
-      .select('conversation_id', {
+      .select('conversation_id, role', {
         count: 'exact',
       })
       .eq('user_id', userId)
@@ -364,6 +368,67 @@ export class ConversationsService {
         conversationError ||
         !conversation
       ) {
+        continue;
+      }
+
+      if (conversation.type === 'group') {
+        const { count: memberCount } =
+          await supabase
+            .from('conversation_members')
+            .select('*', {
+              count: 'exact',
+              head: true,
+            })
+            .eq(
+              'conversation_id',
+              membership.conversation_id,
+            );
+
+        const { data: lastMessage } =
+          await supabase
+            .from('messages')
+            .select('content, created_at')
+            .eq(
+              'conversation_id',
+              membership.conversation_id,
+            )
+            .order('created_at', {
+              ascending: false,
+            })
+            .limit(1)
+            .maybeSingle();
+
+        const { count: unreadCount } =
+          await supabase
+            .from('messages')
+            .select('*', {
+              count: 'exact',
+              head: true,
+            })
+            .eq(
+              'conversation_id',
+              membership.conversation_id,
+            )
+            .eq('is_read', false)
+            .neq('sender_id', userId);
+
+        conversations.push({
+          id: conversation.id,
+          type: 'group',
+          group: {
+            id: conversation.id,
+            name: conversation.name,
+            avatarUrl: conversation.avatar_url,
+            createdBy: conversation.created_by,
+            memberCount: memberCount ?? 0,
+            role: membership.role ?? 'member',
+          },
+          user: null,
+          lastMessage: lastMessage?.content ?? null,
+          lastMessageTime: lastMessage?.created_at ?? null,
+          unreadCount: unreadCount ?? 0,
+        });
+
         continue;
       }
 
@@ -485,6 +550,106 @@ export class ConversationsService {
           page > 1,
       },
     };
+  }
+
+  private readonly groupRoleLevel: Record<string, number> = {
+    member: 1,
+    volunteer: 2,
+    moderator: 3,
+    vice_president: 4,
+    president: 5,
+  };
+
+  private canManageGroupRole(
+    actorRole: string,
+    targetRole: string,
+  ) {
+    return (
+      (this.groupRoleLevel[actorRole] ?? 0) >
+      (this.groupRoleLevel[targetRole] ?? 0)
+    );
+  }
+
+  private async getGroupConversation(
+    conversationId: string,
+  ) {
+    const { data: conversation, error } =
+      await supabase
+        .from('conversations')
+        .select(
+          'id, type, name, avatar_url, created_by, created_at, updated_at',
+        )
+        .eq('id', conversationId)
+        .maybeSingle();
+
+    if (error) {
+      throw new BadRequestException(error.message);
+    }
+
+    if (!conversation) {
+      throw new BadRequestException(
+        'Conversation not found.',
+      );
+    }
+
+    if (conversation.type !== 'group') {
+      throw new BadRequestException(
+        'This action is only available for group conversations.',
+      );
+    }
+
+    return conversation;
+  }
+
+  private async getGroupMembership(
+    conversationId: string,
+    userId: string,
+  ) {
+    const { data: membership, error } =
+      await supabase
+        .from('conversation_members')
+        .select(
+          'conversation_id, user_id, role, joined_at',
+        )
+        .eq('conversation_id', conversationId)
+        .eq('user_id', userId)
+        .maybeSingle();
+
+    if (error) {
+      throw new BadRequestException(error.message);
+    }
+
+    if (!membership) {
+      throw new BadRequestException(
+        'You are not a member of this conversation.',
+      );
+    }
+
+    return membership;
+  }
+
+  private async requireGroupManager(
+    conversationId: string,
+    userId: string,
+  ) {
+    await this.getGroupConversation(conversationId);
+    const membership =
+      await this.getGroupMembership(
+        conversationId,
+        userId,
+      );
+
+    if (
+      !['president', 'vice_president', 'moderator'].includes(
+        membership.role,
+      )
+    ) {
+      throw new BadRequestException(
+        'You do not have permission to manage this group.',
+      );
+    }
+
+    return membership;
   }
 
   async getGroupMentionUsers(
@@ -686,6 +851,7 @@ export class ConversationsService {
       .select(`
         user_id,
         joined_at,
+        role,
         users (
           id,
           display_name,
@@ -731,6 +897,8 @@ export class ConversationsService {
               user.last_seen,
             joinedAt:
               member.joined_at,
+            role:
+              member.role ?? 'member',
             isAdmin:
               user.id ===
               conversation.created_by,
@@ -751,215 +919,418 @@ export class ConversationsService {
       members: formattedMembers,
     };
   }
-async addGroupMembers(
-  userId: string,
-  conversationId: string,
-  dto: AddGroupMembersDto,
-) {
-  // make sure the requester belongs to the conversation
-  const {
-    data: membership,
-    error: membershipError,
-  } = await supabase
-    .from('conversation_members')
-    .select('conversation_id')
-    .eq('conversation_id', conversationId)
-    .eq('user_id', userId)
-    .maybeSingle();
-
-  if (membershipError) {
-    throw new BadRequestException(
-      membershipError.message,
-    );
-  }
-
-  if (!membership) {
-    throw new BadRequestException(
-      'You are not a member of this conversation.',
-    );
-  }
-
-  // get the conversation
-  const {
-    data: conversation,
-    error: conversationError,
-  } = await supabase
-    .from('conversations')
-    .select('id, type, name, created_by')
-    .eq('id', conversationId)
-    .maybeSingle();
-
-  if (conversationError) {
-    throw new BadRequestException(
-      conversationError.message,
-    );
-  }
-
-  if (!conversation) {
-    throw new BadRequestException(
-      'Conversation not found.',
-    );
-  }
-
-  // only groups can have members added
-  if (conversation.type !== 'group') {
-    throw new BadRequestException(
-      'Members can only be added to group conversations.',
-    );
-  }
-
-  // for now, only the group creator can add members
-  if (conversation.created_by !== userId) {
-    throw new BadRequestException(
-      'Only the group creator can add members.',
-    );
-  }
-
-  // remove duplicate IDs
-  const memberIds = [
-    ...new Set(dto.memberIds),
-  ];
-
-  // don't add the creator again
-  const newMemberIds = memberIds.filter(
-    (memberId) => memberId !== userId,
-  );
-
-  if (newMemberIds.length === 0) {
-    throw new BadRequestException(
-      'Please provide at least one new member.',
-    );
-  }
-
-  // make sure all requested users exist
-  const {
-    data: users,
-    error: usersError,
-  } = await supabase
-    .from('users')
-    .select(`
-      id,
-      display_name,
-      username,
-      avatar_url,
-      is_online,
-      last_seen
-    `)
-    .in('id', newMemberIds);
-
-  if (usersError) {
-    throw new BadRequestException(
-      usersError.message,
-    );
-  }
-
-  if (
-    !users ||
-    users.length !== newMemberIds.length
+  async addGroupMembers(
+    userId: string,
+    conversationId: string,
+    dto: AddGroupMembersDto,
   ) {
-    throw new BadRequestException(
-      'One or more users were not found.',
+    await this.requireGroupManager(
+      conversationId,
+      userId,
     );
+
+    const memberIds = [
+      ...new Set(dto.memberIds),
+    ].filter((memberId) => memberId !== userId);
+
+    if (memberIds.length === 0) {
+      throw new BadRequestException(
+        'Please provide at least one new member.',
+      );
+    }
+
+    const { data: users, error: usersError } =
+      await supabase
+        .from('users')
+        .select(`
+          id,
+          display_name,
+          username,
+          avatar_url,
+          is_online,
+          last_seen
+        `)
+        .in('id', memberIds);
+
+    if (usersError) {
+      throw new BadRequestException(
+        usersError.message,
+      );
+    }
+
+    if (!users || users.length !== memberIds.length) {
+      throw new BadRequestException(
+        'One or more users were not found.',
+      );
+    }
+
+    const {
+      data: existingMembers,
+      error: existingMembersError,
+    } = await supabase
+      .from('conversation_members')
+      .select('user_id')
+      .eq('conversation_id', conversationId)
+      .in('user_id', memberIds);
+
+    if (existingMembersError) {
+      throw new BadRequestException(
+        existingMembersError.message,
+      );
+    }
+
+    const existingIds = new Set(
+      (existingMembers ?? []).map(
+        (member) => member.user_id,
+      ),
+    );
+
+    const usersToAdd = memberIds.filter(
+      (memberId) => !existingIds.has(memberId),
+    );
+
+    if (usersToAdd.length === 0) {
+      throw new BadRequestException(
+        'All selected users are already members of this group.',
+      );
+    }
+
+    const { error: insertError } =
+      await supabase
+        .from('conversation_members')
+        .insert(
+          usersToAdd.map((memberId) => ({
+            conversation_id: conversationId,
+            user_id: memberId,
+            role: 'member',
+          })),
+        );
+
+    if (insertError) {
+      throw new BadRequestException(
+        insertError.message,
+      );
+    }
+
+    return {
+      success: true,
+      message: 'Members added successfully.',
+      conversationId,
+      addedMembers: (users ?? [])
+        .filter((user) =>
+          usersToAdd.includes(user.id),
+        )
+        .map((user) => ({
+          id: user.id,
+          username: user.username,
+          displayName: user.display_name,
+          avatarUrl: user.avatar_url,
+          isOnline: user.is_online,
+          lastSeen: user.last_seen,
+          role: 'member',
+        })),
+    };
   }
 
-  // check which users are already members
-  const {
-    data: existingMembers,
-    error: existingMembersError,
-  } = await supabase
-    .from('conversation_members')
-    .select('user_id')
-    .eq('conversation_id', conversationId)
-    .in('user_id', newMemberIds);
+  async removeGroupMember(
+    userId: string,
+    conversationId: string,
+    targetUserId: string,
+  ) {
+    const actor =
+      await this.requireGroupManager(
+        conversationId,
+        userId,
+      );
 
-  if (existingMembersError) {
-    throw new BadRequestException(
-      existingMembersError.message,
-    );
+    if (userId === targetUserId) {
+      throw new BadRequestException(
+        'Use the leave-group endpoint to leave the group.',
+      );
+    }
+
+    const target =
+      await this.getGroupMembership(
+        conversationId,
+        targetUserId,
+      );
+
+    if (target.role === 'president') {
+      throw new BadRequestException(
+        'The president cannot be removed from the group.',
+      );
+    }
+
+    if (
+      !this.canManageGroupRole(
+        actor.role,
+        target.role,
+      )
+    ) {
+      throw new BadRequestException(
+        'You cannot remove a member with an equal or higher role.',
+      );
+    }
+
+    const { error } = await supabase
+      .from('conversation_members')
+      .delete()
+      .eq('conversation_id', conversationId)
+      .eq('user_id', targetUserId);
+
+    if (error) {
+      throw new BadRequestException(error.message);
+    }
+
+    return {
+      success: true,
+      message: 'Member removed successfully.',
+      removedUserId: targetUserId,
+    };
   }
 
-  const existingMemberIds = new Set(
-    (existingMembers ?? []).map(
-      (member) => member.user_id,
-    ),
-  );
+  async leaveGroup(
+    userId: string,
+    conversationId: string,
+  ) {
+    await this.getGroupConversation(conversationId);
+    const membership =
+      await this.getGroupMembership(
+        conversationId,
+        userId,
+      );
 
-  const usersToAdd = newMemberIds.filter(
-    (memberId) =>
-      !existingMemberIds.has(memberId),
-  );
+    if (membership.role === 'president') {
+      throw new BadRequestException(
+        'The president cannot leave the group. Transfer the presidency first.',
+      );
+    }
 
-  if (usersToAdd.length === 0) {
-    throw new BadRequestException(
-      'All selected users are already members of this group.',
-    );
+    const { error } = await supabase
+      .from('conversation_members')
+      .delete()
+      .eq('conversation_id', conversationId)
+      .eq('user_id', userId);
+
+    if (error) {
+      throw new BadRequestException(error.message);
+    }
+
+    return {
+      success: true,
+      message: 'You left the group successfully.',
+      conversationId,
+    };
   }
 
-  // insert new members
-  const memberRecords = usersToAdd.map(
-    (memberId) => ({
-      conversation_id: conversationId,
-      user_id: memberId,
-    }),
-  );
+  async updateGroupMemberRole(
+    userId: string,
+    conversationId: string,
+    targetUserId: string,
+    role: string,
+  ) {
+    const actor =
+      await this.requireGroupManager(
+        conversationId,
+        userId,
+      );
 
-  const {
-    error: insertError,
-  } = await supabase
-    .from('conversation_members')
-    .insert(memberRecords);
+    const allowedRoles = [
+      'president',
+      'vice_president',
+      'moderator',
+      'volunteer',
+      'member',
+    ];
 
-  if (insertError) {
-    throw new BadRequestException(
-      insertError.message,
-    );
+    if (!allowedRoles.includes(role)) {
+      throw new BadRequestException(
+        'Invalid group role.',
+      );
+    }
+
+    if (userId === targetUserId) {
+      throw new BadRequestException(
+        'You cannot change your own group role.',
+      );
+    }
+
+    const target =
+      await this.getGroupMembership(
+        conversationId,
+        targetUserId,
+      );
+
+    if (target.role === 'president') {
+      throw new BadRequestException(
+        'The current president can only be changed through presidency transfer.',
+      );
+    }
+
+    if (role === 'president') {
+      if (actor.role !== 'president') {
+        throw new BadRequestException(
+          'Only the president can transfer the presidency.',
+        );
+      }
+
+      const { error: actorError } =
+        await supabase
+          .from('conversation_members')
+          .update({ role: 'vice_president' })
+          .eq('conversation_id', conversationId)
+          .eq('user_id', userId);
+
+      if (actorError) {
+        throw new BadRequestException(
+          actorError.message,
+        );
+      }
+
+      const { error: targetError } =
+        await supabase
+          .from('conversation_members')
+          .update({ role: 'president' })
+          .eq('conversation_id', conversationId)
+          .eq('user_id', targetUserId);
+
+      if (targetError) {
+        await supabase
+          .from('conversation_members')
+          .update({ role: 'president' })
+          .eq('conversation_id', conversationId)
+          .eq('user_id', userId);
+        throw new BadRequestException(
+          targetError.message,
+        );
+      }
+
+      return {
+        success: true,
+        message: 'Presidency transferred successfully.',
+        targetUserId,
+        role: 'president',
+      };
+    }
+
+    if (
+      !this.canManageGroupRole(
+        actor.role,
+        target.role,
+      )
+    ) {
+      throw new BadRequestException(
+        'You cannot change the role of a member with an equal or higher role.',
+      );
+    }
+
+    if (
+      !this.canManageGroupRole(
+        actor.role,
+        role,
+      )
+    ) {
+      throw new BadRequestException(
+        'You cannot assign a role equal to or higher than your own role.',
+      );
+    }
+
+    const { data, error } =
+      await supabase
+        .from('conversation_members')
+        .update({ role })
+        .eq('conversation_id', conversationId)
+        .eq('user_id', targetUserId)
+        .select('user_id, role')
+        .single();
+
+    if (error) {
+      throw new BadRequestException(error.message);
+    }
+
+    return {
+      success: true,
+      message: 'Member role updated successfully.',
+      data,
+    };
   }
 
-  // return the newly added members
-  const {
-    data: addedMembers,
-    error: addedMembersError,
-  } = await supabase
-    .from('users')
-    .select(`
-      id,
-      display_name,
-      username,
-      avatar_url,
-      is_online,
-      last_seen
-    `)
-    .in('id', usersToAdd);
+  async updateGroup(
+    userId: string,
+    conversationId: string,
+    name?: string,
+    avatarUrl?: string,
+  ) {
+    const actor =
+      await this.requireGroupManager(
+        conversationId,
+        userId,
+      );
 
-  if (addedMembersError) {
-    throw new BadRequestException(
-      addedMembersError.message,
-    );
+    if (
+      !['president', 'vice_president'].includes(
+        actor.role,
+      )
+    ) {
+      throw new BadRequestException(
+        'Only the president or vice president can edit group details.',
+      );
+    }
+
+    const updateData: Record<string, any> = {};
+
+    if (name !== undefined) {
+      const trimmedName = name.trim();
+      if (!trimmedName) {
+        throw new BadRequestException(
+          'Group name cannot be empty.',
+        );
+      }
+      updateData.name = trimmedName;
+    }
+
+    if (avatarUrl !== undefined) {
+      updateData.avatar_url =
+        avatarUrl.trim() || null;
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      throw new BadRequestException(
+        'Provide a group name or avatar URL to update.',
+      );
+    }
+
+    updateData.updated_at =
+      new Date().toISOString();
+
+    const { data, error } = await supabase
+      .from('conversations')
+      .update(updateData)
+      .eq('id', conversationId)
+      .select(
+        'id, type, name, avatar_url, created_by, created_at, updated_at',
+      )
+      .single();
+
+    if (error) {
+      throw new BadRequestException(error.message);
+    }
+
+    return {
+      success: true,
+      message: 'Group updated successfully.',
+      conversation: {
+        id: data.id,
+        type: data.type,
+        name: data.name,
+        avatarUrl: data.avatar_url,
+        createdBy: data.created_by,
+        createdAt: data.created_at,
+        updatedAt: data.updated_at,
+      },
+    };
   }
 
-  return {
-    success: true,
-    message: 'Members added successfully.',
-    conversation: {
-      id: conversation.id,
-      name: conversation.name,
-    },
-    addedMembers: (addedMembers ?? []).map(
-      (user) => ({
-        id: user.id,
-        username: user.username,
-        displayName:
-          user.display_name,
-        avatarUrl:
-          user.avatar_url,
-        isOnline:
-          user.is_online,
-        lastSeen:
-          user.last_seen,
-      }),
-    ),
-  };
-}
   async getMessages(
     userId: string,
     conversationId: string,
@@ -1051,6 +1422,81 @@ async addGroupMembers(
       );
     }
 
+    const { data: conversation, error: conversationError } =
+      await supabase
+        .from('conversations')
+        .select(
+          'id, type, name, avatar_url, created_by, created_at, updated_at',
+        )
+        .eq('id', conversationId)
+        .maybeSingle();
+
+    if (conversationError) {
+      throw new BadRequestException(
+        conversationError.message,
+      );
+    }
+
+    if (!conversation) {
+      throw new BadRequestException(
+        'Conversation not found.',
+      );
+    }
+
+    let groupMembers: any[] = [];
+    let groupMemberCount = 0;
+
+    if (conversation.type === 'group') {
+      const {
+        data: members,
+        error: groupMembersError,
+        count,
+      } = await supabase
+        .from('conversation_members')
+        .select(
+          `
+          user_id,
+          role,
+          joined_at,
+          users (
+            id,
+            display_name,
+            username,
+            avatar_url,
+            is_online,
+            last_seen
+          )
+        `,
+          { count: 'exact' },
+        )
+        .eq('conversation_id', conversationId)
+        .order('joined_at', { ascending: true });
+
+      if (groupMembersError) {
+        throw new BadRequestException(
+          groupMembersError.message,
+        );
+      }
+
+      groupMemberCount = count ?? 0;
+      groupMembers = (members ?? [])
+        .map((member: any) => {
+          const memberUser = member.users;
+          if (!memberUser) return null;
+          return {
+            id: memberUser.id,
+            username: memberUser.username,
+            displayName: memberUser.display_name,
+            avatarUrl: memberUser.avatar_url,
+            isOnline: memberUser.is_online,
+            lastSeen: memberUser.last_seen,
+            role: member.role ?? 'member',
+            joinedAt: member.joined_at,
+          };
+        })
+        .filter(Boolean);
+    }
+
     // get the other participant
     const {
       data: otherMember,
@@ -1103,6 +1549,48 @@ async addGroupMembers(
       }
 
       user = otherUser;
+    }
+
+    const senderIds = [
+      ...new Set(
+        (messages ?? []).map(
+          (message: any) => message.sender_id,
+        ),
+      ),
+    ];
+
+    const senderMap = new Map<string, any>();
+
+    if (senderIds.length > 0) {
+      const { data: senders, error: sendersError } =
+        await supabase
+          .from('users')
+          .select(`
+            id,
+            display_name,
+            username,
+            avatar_url,
+            is_online,
+            last_seen
+          `)
+          .in('id', senderIds);
+
+      if (sendersError) {
+        throw new BadRequestException(
+          sendersError.message,
+        );
+      }
+
+      for (const sender of senders ?? []) {
+        senderMap.set(sender.id, {
+          id: sender.id,
+          username: sender.username,
+          displayName: sender.display_name,
+          avatarUrl: sender.avatar_url,
+          isOnline: sender.is_online,
+          lastSeen: sender.last_seen,
+        });
+      }
     }
 
     // create signed URLs and format each message
@@ -1232,6 +1720,8 @@ async addGroupMembers(
               id: message.id,
               senderId:
                 message.sender_id,
+              sender:
+                senderMap.get(message.sender_id) ?? null,
               content:
                 message.content,
               createdAt:
@@ -1276,6 +1766,23 @@ async addGroupMembers(
       success: true,
 
       user,
+      conversation: {
+        id: conversation.id,
+        type: conversation.type,
+        name: conversation.name ?? null,
+        avatarUrl: conversation.avatar_url ?? null,
+        createdBy: conversation.created_by ?? null,
+        createdAt: conversation.created_at,
+        updatedAt: conversation.updated_at,
+        memberCount:
+          conversation.type === 'group'
+            ? groupMemberCount
+            : 2,
+        members:
+          conversation.type === 'group'
+            ? groupMembers
+            : [],
+      },
 
       messages: formattedMessages,
 

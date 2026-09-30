@@ -19,7 +19,10 @@ import { ConversationsService } from './conversations.service';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
+
 import { AddGroupMembersDto } from './dto/add-group-members.dto';
+import { UpdateGroupMemberRoleDto } from './dto/update-group-member-role.dto';
+import { UpdateGroupDto } from './dto/update-group.dto';
 import { SendMessageDto } from './dto/send-message.dto';
 import { UpdateMessageDto } from './dto/update-message.dto';
 import { ForwardMessageDto } from './dto/forward-message.dto';
@@ -36,33 +39,17 @@ export class ConversationsController {
   ) {}
 
   @UseGuards(JwtAuthGuard)
-  @Throttle({
-    default: {
-      limit: 20,
-      ttl: 60 * 1000,
-    },
-  })
-
+  @Throttle({ default: { limit: 20, ttl: 60 * 1000 } })
   @Post('group')
   createGroup(
     @CurrentUser() user: any,
     @Body() dto: CreateGroupDto,
   ) {
-
-    return this.conversationsService.createGroup(
-      user.id,
-      dto,
-    );
+    return this.conversationsService.createGroup(user.id, dto);
   }
 
   @UseGuards(JwtAuthGuard)
-  @Throttle({
-    default: {
-      limit: 120,
-      ttl: 60 * 1000,
-    },
-  })
-
+  @Throttle({ default: { limit: 120, ttl: 60 * 1000 } })
   @Post(':targetUserId')
   @UseInterceptors(FileInterceptor('file'))
   createConversation(
@@ -71,8 +58,6 @@ export class ConversationsController {
     @Body() dto: SendMessageDto,
     @UploadedFile() file: any,
   ) {
-
-    // create the conversation and send the first message
     return this.conversationsService.createConversationAndSendMessage(
       user.id,
       targetUserId,
@@ -87,8 +72,6 @@ export class ConversationsController {
     @CurrentUser() user: any,
     @Query() pagination: PaginationDto,
   ) {
-
-    // get the user's conversations
     return this.conversationsService.getConversations(
       user.id,
       pagination,
@@ -96,20 +79,13 @@ export class ConversationsController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Throttle({
-    default: {
-      limit: 60,
-      ttl: 60 * 1000,
-    },
-  })
-
+  @Throttle({ default: { limit: 60, ttl: 60 * 1000 } })
   @Get(':conversationId/mention-users')
   getGroupMentionUsers(
     @CurrentUser() user: any,
     @Param('conversationId') conversationId: string,
     @Query() dto: GroupMentionQueryDto,
   ) {
-
     return this.conversationsService.getGroupMentionUsers(
       user.id,
       conversationId,
@@ -118,19 +94,12 @@ export class ConversationsController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Throttle({
-    default: {
-      limit: 60,
-      ttl: 60 * 1000,
-    },
-  })
-
+  @Throttle({ default: { limit: 60, ttl: 60 * 1000 } })
   @Get(':conversationId/members')
   getGroupMembers(
     @CurrentUser() user: any,
     @Param('conversationId') conversationId: string,
   ) {
-
     return this.conversationsService.getGroupMembers(
       user.id,
       conversationId,
@@ -138,39 +107,89 @@ export class ConversationsController {
   }
 
   @UseGuards(JwtAuthGuard)
-  @Throttle({
-    default: {
-      limit: 120,
-      ttl: 60 * 1000,
-    },
-  })
-@UseGuards(JwtAuthGuard)
-@Throttle({
-  default: {
-    limit: 20,
-    ttl: 60 * 1000,
-  },
-})
-@Post(':conversationId/members')
-addGroupMembers(
-  @CurrentUser() user: any,
-  @Param('conversationId') conversationId: string,
-  @Body() dto: AddGroupMembersDto,
-) {
-  return this.conversationsService.addGroupMembers(
-    user.id,
-    conversationId,
-    dto,
-  );
-}
+  @Throttle({ default: { limit: 20, ttl: 60 * 1000 } })
+  @Post(':conversationId/members')
+  addGroupMembers(
+    @CurrentUser() user: any,
+    @Param('conversationId') conversationId: string,
+    @Body() dto: AddGroupMembersDto,
+  ) {
+    return this.conversationsService.addGroupMembers(
+      user.id,
+      conversationId,
+      dto,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 30, ttl: 60 * 1000 } })
+  @Delete(':conversationId/members/:targetUserId')
+  removeGroupMember(
+    @CurrentUser() user: any,
+    @Param('conversationId') conversationId: string,
+    @Param('targetUserId') targetUserId: string,
+  ) {
+    return this.conversationsService.removeGroupMember(
+      user.id,
+      conversationId,
+      targetUserId,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 60 * 1000 } })
+  @Delete(':conversationId/leave')
+  leaveGroup(
+    @CurrentUser() user: any,
+    @Param('conversationId') conversationId: string,
+  ) {
+    return this.conversationsService.leaveGroup(
+      user.id,
+      conversationId,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 20, ttl: 60 * 1000 } })
+  @Patch(':conversationId/members/:targetUserId/role')
+  updateGroupMemberRole(
+    @CurrentUser() user: any,
+    @Param('conversationId') conversationId: string,
+    @Param('targetUserId') targetUserId: string,
+    @Body() dto: UpdateGroupMemberRoleDto,
+  ) {
+    return this.conversationsService.updateGroupMemberRole(
+      user.id,
+      conversationId,
+      targetUserId,
+      dto.role,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 20, ttl: 60 * 1000 } })
+  @Patch(':conversationId/group')
+  updateGroup(
+    @CurrentUser() user: any,
+    @Param('conversationId') conversationId: string,
+    @Body() dto: UpdateGroupDto,
+  ) {
+    return this.conversationsService.updateGroup(
+      user.id,
+      conversationId,
+      dto.name,
+      dto.avatarUrl,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 120, ttl: 60 * 1000 } })
   @Get(':conversationId/messages')
   getMessages(
     @CurrentUser() user: any,
     @Param('conversationId') conversationId: string,
     @Query() pagination: PaginationDto,
   ) {
-
-    // get messages from a conversation
     return this.conversationsService.getMessages(
       user.id,
       conversationId,
@@ -179,13 +198,7 @@ addGroupMembers(
   }
 
   @UseGuards(JwtAuthGuard)
-  @Throttle({
-    default: {
-      limit: 120,
-      ttl: 60 * 1000,
-    },
-  })
-
+  @Throttle({ default: { limit: 120, ttl: 60 * 1000 } })
   @Post(':conversationId/messages')
   @UseInterceptors(FileInterceptor('file'))
   sendMessage(
@@ -194,8 +207,6 @@ addGroupMembers(
     @Body() dto: SendMessageDto,
     @UploadedFile() file: any,
   ) {
-
-    // send a message with optional media
     return this.conversationsService.sendMessage(
       user.id,
       conversationId,
@@ -210,8 +221,6 @@ addGroupMembers(
     @CurrentUser() user: any,
     @Param('conversationId') conversationId: string,
   ) {
-
-    // mark all messages as read
     return this.conversationsService.markMessagesAsRead(
       user.id,
       conversationId,
@@ -225,8 +234,6 @@ addGroupMembers(
     @Param('conversationId') conversationId: string,
     @Param('messageId') messageId: string,
   ) {
-
-    // mark the message as delivered
     return this.conversationsService.markMessageAsDelivered(
       user.id,
       conversationId,
@@ -241,8 +248,6 @@ addGroupMembers(
     @Param('conversationId') conversationId: string,
     @Param('messageId') messageId: string,
   ) {
-    
-    // mark the message as seen
     return this.conversationsService.markMessageAsSeen(
       user.id,
       conversationId,
@@ -251,13 +256,7 @@ addGroupMembers(
   }
 
   @UseGuards(JwtAuthGuard)
-  @Throttle({
-    default: {
-      limit: 30,
-      ttl: 60 * 1000,
-    },
-  })
-
+  @Throttle({ default: { limit: 30, ttl: 60 * 1000 } })
   @Patch(':conversationId/messages/:messageId')
   updateMessage(
     @CurrentUser() user: any,
@@ -265,8 +264,6 @@ addGroupMembers(
     @Param('messageId') messageId: string,
     @Body() dto: UpdateMessageDto,
   ) {
-
-    // edit a message
     return this.conversationsService.updateMessage(
       user.id,
       conversationId,
@@ -276,21 +273,13 @@ addGroupMembers(
   }
 
   @UseGuards(JwtAuthGuard)
-  @Throttle({
-    default: {
-      limit: 30,
-      ttl: 60 * 1000,
-    },
-  })
-
+  @Throttle({ default: { limit: 30, ttl: 60 * 1000 } })
   @Delete(':conversationId/messages/:messageId')
   deleteMessage(
     @CurrentUser() user: any,
     @Param('conversationId') conversationId: string,
     @Param('messageId') messageId: string,
   ) {
-
-    // delete a message
     return this.conversationsService.deleteMessage(
       user.id,
       conversationId,
@@ -299,13 +288,7 @@ addGroupMembers(
   }
 
   @UseGuards(JwtAuthGuard)
-  @Throttle({
-    default: {
-      limit: 30,
-      ttl: 60 * 1000,
-    },
-  })
-
+  @Throttle({ default: { limit: 30, ttl: 60 * 1000 } })
   @Post(':conversationId/messages/:messageId/forward')
   forwardMessage(
     @CurrentUser() user: any,
@@ -313,8 +296,6 @@ addGroupMembers(
     @Param('messageId') messageId: string,
     @Body() dto: ForwardMessageDto,
   ) {
-
-    // forward a message to another conversation
     return this.conversationsService.forwardMessage(
       user.id,
       conversationId,
@@ -324,13 +305,7 @@ addGroupMembers(
   }
 
   @UseGuards(JwtAuthGuard)
-  @Throttle({
-    default: {
-      limit: 60,
-      ttl: 60 * 1000,
-    },
-  })
-
+  @Throttle({ default: { limit: 60, ttl: 60 * 1000 } })
   @Post(':conversationId/messages/:messageId/reaction')
   addReaction(
     @CurrentUser() user: any,
@@ -338,8 +313,6 @@ addGroupMembers(
     @Param('messageId') messageId: string,
     @Body() dto: ReactMessageDto,
   ) {
-
-    // add or change a reaction
     return this.conversationsService.addReaction(
       user.id,
       conversationId,
@@ -349,21 +322,13 @@ addGroupMembers(
   }
 
   @UseGuards(JwtAuthGuard)
-  @Throttle({
-    default: {
-      limit: 60,
-      ttl: 60 * 1000,
-    },
-  })
-
+  @Throttle({ default: { limit: 60, ttl: 60 * 1000 } })
   @Delete(':conversationId/messages/:messageId/reaction')
   removeReaction(
     @CurrentUser() user: any,
     @Param('conversationId') conversationId: string,
     @Param('messageId') messageId: string,
   ) {
-
-    // remove the reaction
     return this.conversationsService.removeReaction(
       user.id,
       conversationId,

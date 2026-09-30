@@ -105,135 +105,232 @@ export class ClubsService {
     };
   }
 
+  
   async findAll(
-    userId: string,
-    pagination: PaginationDto,
-  ) {
-    const page = pagination.page;
-    const limit = pagination.limit;
+  userId: string,
+  pagination: PaginationDto,
+) {
+  const page = pagination.page;
+  const limit = pagination.limit;
 
-    const from = (page - 1) * limit;
-    const to = from + limit - 1;
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
 
+  const {
+    data: clubs,
+    error: clubsError,
+    count,
+  } = await supabase
+    .from('clubs')
+    .select('*', {
+      count: 'exact',
+    })
+    .order('created_at', {
+      ascending: false,
+    })
+    .range(from, to);
+
+  if (clubsError) {
+    throw new BadRequestException(
+      clubsError.message,
+    );
+  }
+
+  const clubIds =
+    (clubs ?? []).map(
+      (club) => club.id,
+    );
+
+  let membersByClub:
+    Record<string, any[]> = {};
+
+  if (clubIds.length > 0) {
     const {
-      data: clubs,
-      error: clubsError,
-      count,
+      data: members,
+      error: membersError,
     } = await supabase
-      .from('clubs')
-      .select('*', {
-        count: 'exact',
-      })
-      .order('created_at', {
-        ascending: false,
-      })
-      .range(from, to);
+      .from('club_members')
+      .select(`
+        id,
+        club_id,
+        user_id,
+        joined_at,
+        role,
+        users (
+          id,
+          username,
+          display_name,
+          bio,
+          avatar_url,
+          city
+        )
+      `)
+      .in(
+        'club_id',
+        clubIds,
+      )
+      .order(
+        'joined_at',
+        {
+          ascending: true,
+        },
+      );
 
-    if (clubsError) {
+    if (membersError) {
       throw new BadRequestException(
-        clubsError.message,
+        membersError.message,
       );
     }
 
-    const clubsWithDetails =
-      await Promise.all(
-        (clubs ?? []).map(
-          async (club) => {
-            const {
-              count: memberCount,
-              error: countError,
-            } = await supabase
-              .from('club_members')
-              .select('id', {
-                count: 'exact',
-                head: true,
-              })
-              .eq(
-                'club_id',
-                club.id,
-              );
+    membersByClub =
+      (members ?? []).reduce(
+        (
+          result: Record<string, any[]>,
+          member: any,
+        ) => {
+          if (
+            !result[member.club_id]
+          ) {
+            result[member.club_id] = [];
+          }
 
-            if (countError) {
-              throw new BadRequestException(
-                countError.message,
-              );
-            }
+          result[member.club_id].push({
+            id:
+              member.users?.id,
+            username:
+              member.users?.username,
+            displayName:
+              member.users?.display_name,
+            bio:
+              member.users?.bio,
+            avatarUrl:
+              member.users?.avatar_url,
+            city:
+              member.users?.city,
+            role:
+              member.role,
+            joinedAt:
+              member.joined_at,
+          });
 
-            const {
-              data: membership,
-              error:
-                membershipError,
-            } = await supabase
-              .from('club_members')
-              .select(
-                'id, role',
-              )
-              .eq(
-                'club_id',
-                club.id,
-              )
-              .eq(
-                'user_id',
-                userId,
-              )
-              .maybeSingle();
-
-            if (membershipError) {
-              throw new BadRequestException(
-                membershipError.message,
-              );
-            }
-
-            return {
-              id: club.id,
-              name: club.name,
-              category:
-                club.category,
-              description:
-                club.description,
-              coverImageUrl:
-                club.cover_image_url,
-              memberCount:
-                memberCount ?? 0,
-              isJoined:
-                !!membership,
-              role:
-                membership?.role ??
-                null,
-              createdBy:
-                club.created_by,
-              createdAt:
-                club.created_at,
-              updatedAt:
-                club.updated_at,
-            };
-          },
-        ),
+          return result;
+        },
+        {},
       );
-
-    const total = count ?? 0;
-
-    const totalPages =
-      Math.ceil(
-        total / limit,
-      );
-
-    return {
-      success: true,
-      clubs:
-        clubsWithDetails,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages,
-        hasNextPage:
-          page < totalPages,
-        hasPreviousPage:
-          page > 1,
-      },
-    };
   }
+
+  const clubsWithDetails =
+    await Promise.all(
+      (clubs ?? []).map(
+        async (club) => {
+          const {
+            count: memberCount,
+            error: countError,
+          } = await supabase
+            .from('club_members')
+            .select('id', {
+              count: 'exact',
+              head: true,
+            })
+            .eq(
+              'club_id',
+              club.id,
+            );
+
+          if (countError) {
+            throw new BadRequestException(
+              countError.message,
+            );
+          }
+
+          const {
+            data: membership,
+            error:
+              membershipError,
+          } = await supabase
+            .from('club_members')
+            .select(
+              'id, role',
+            )
+            .eq(
+              'club_id',
+              club.id,
+            )
+            .eq(
+              'user_id',
+              userId,
+            )
+            .maybeSingle();
+
+          if (membershipError) {
+            throw new BadRequestException(
+              membershipError.message,
+            );
+          }
+
+          return {
+            id: club.id,
+            name: club.name,
+            category:
+              club.category,
+            description:
+              club.description,
+            coverImageUrl:
+              club.cover_image_url,
+
+            memberCount:
+              memberCount ?? 0,
+
+            members:
+              membersByClub[
+                club.id
+              ] ?? [],
+
+            isJoined:
+              !!membership,
+
+            role:
+              membership?.role ??
+              null,
+
+            createdBy:
+              club.created_by,
+
+            createdAt:
+              club.created_at,
+
+            updatedAt:
+              club.updated_at,
+          };
+        },
+      ),
+    );
+
+  const total = count ?? 0;
+
+  const totalPages =
+    Math.ceil(
+      total / limit,
+    );
+
+  return {
+    success: true,
+
+    clubs:
+      clubsWithDetails,
+
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasNextPage:
+        page < totalPages,
+      hasPreviousPage:
+        page > 1,
+    },
+  };
+}
 
   async joinClub(
     userId: string,
