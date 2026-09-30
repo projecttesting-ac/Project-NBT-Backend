@@ -539,11 +539,25 @@ export class AuthService {
         'USER',
       );
 
-    const {
-      password_hash,
-      refresh_token,
-      ...safeUser
-    } = user;
+    const safeUser = {
+      username: user.username,
+      bio: user.bio,
+      created_at: user.created_at,
+      updated_at: user.updated_at,
+      display_name: user.display_name,
+      interest: user.interest,
+      pronouns: user.pronouns,
+      date_of_birth: user.date_of_birth,
+      city: user.city,
+      avatar_url: user.avatar_url,
+      is_mobile_verified:
+        user.is_mobile_verified,
+      is_profile_completed:
+        user.is_profile_completed,
+      mobile_number: user.mobile_number,
+      is_online: user.is_online,
+      profile_image: user.profile_image,
+    };
 
     return {
       success: true,

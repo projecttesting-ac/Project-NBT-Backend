@@ -191,100 +191,156 @@ export class EventsService {
   }
 
   async findAll(
-    pagination: PaginationDto,
-  ) {
-    const page = pagination.page;
-    const limit = pagination.limit;
+  pagination: PaginationDto,
+) {
+  const page = pagination.page;
+  const limit = pagination.limit;
 
-    const from = (page - 1) * limit;
-    const to = from + limit - 1;
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
 
+  const {
+    data,
+    error,
+    count,
+  } = await supabase
+    .from('events')
+    .select('*', { count: 'exact' })
+    .order('event_date', {
+      ascending: true,
+    })
+    .range(from, to);
+
+  if (error) {
+    throw new BadRequestException(
+      error.message,
+    );
+  }
+
+  const events = data ?? [];
+
+  const eventIds = events.map(
+    (event) => event.id,
+  );
+
+  let attendeesByEvent:
+    Record<string, any[]> = {};
+
+  if (eventIds.length > 0) {
     const {
-      data,
-      error,
-      count,
+      data: attendees,
+      error: attendeeError,
     } = await supabase
-      .from('events')
-      .select('*', { count: 'exact' })
-      .order('event_date', {
+      .from('event_attendees')
+      .select(`
+        id,
+        event_id,
+        user_id,
+        created_at,
+        users:user_id (
+          id,
+          username,
+          display_name,
+          avatar_url
+        )
+      `)
+      .in(
+        'event_id',
+        eventIds,
+      )
+      .order('created_at', {
         ascending: true,
-      })
-      .range(from, to);
+      });
 
-    if (error) {
+    if (attendeeError) {
       throw new BadRequestException(
-        error.message,
+        attendeeError.message,
       );
     }
 
-    const events = data ?? [];
-
-    const eventIds = events.map(
-      (event) => event.id,
-    );
-
-    let attendeeCounts: Record<
-      string,
-      number
-    > = {};
-
-    if (eventIds.length > 0) {
-      const {
-        data: attendees,
-        error: attendeeError,
-      } = await supabase
-        .from('event_attendees')
-        .select('event_id')
-        .in('event_id', eventIds);
-
-      if (attendeeError) {
-        throw new BadRequestException(
-          attendeeError.message,
-        );
-      }
-
-      attendeeCounts = (attendees ?? []).reduce(
+    attendeesByEvent =
+      (attendees ?? []).reduce(
         (
-          counts: Record<string, number>,
-          attendee,
+          result: Record<
+            string,
+            any[]
+          >,
+          attendee: any,
         ) => {
-          counts[attendee.event_id] =
-            (counts[attendee.event_id] ?? 0) + 1;
+          if (
+            !result[
+              attendee.event_id
+            ]
+          ) {
+            result[
+              attendee.event_id
+            ] = [];
+          }
 
-          return counts;
+          result[
+            attendee.event_id
+          ].push({
+            id:
+              attendee.users?.id,
+            username:
+              attendee.users?.username,
+            displayName:
+              attendee.users
+                ?.display_name,
+            avatarUrl:
+              attendee.users
+                ?.avatar_url,
+            joinedAt:
+              attendee.created_at,
+          });
+
+          return result;
         },
         {},
       );
-    }
-
-    const eventsWithCounts = events.map(
-      (event) => ({
-        ...event,
-        attendeeCount:
-          attendeeCounts[event.id] ?? 0,
-      }),
-    );
-
-    const total = count ?? 0;
-    const totalPages = Math.ceil(
-      total / limit,
-    );
-
-    return {
-      success: true,
-      events: eventsWithCounts,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages,
-        hasNextPage:
-          page < totalPages,
-        hasPreviousPage:
-          page > 1,
-      },
-    };
   }
+
+  const eventsWithAttendees =
+    events.map((event) => {
+      const attendees =
+        attendeesByEvent[
+          event.id
+        ] ?? [];
+
+      return {
+        ...event,
+
+        attendeeCount:
+          attendees.length,
+
+        attendees,
+      };
+    });
+
+  const total = count ?? 0;
+
+  const totalPages = Math.ceil(
+    total / limit,
+  );
+
+  return {
+    success: true,
+
+    events:
+      eventsWithAttendees,
+
+    pagination: {
+      page,
+      limit,
+      total,
+      totalPages,
+      hasNextPage:
+        page < totalPages,
+      hasPreviousPage:
+        page > 1,
+    },
+  };
+}
 
   async findOne(id: string) {
     const { data, error } = await supabase

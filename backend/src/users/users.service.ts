@@ -50,7 +50,6 @@ export class UsersService {
       dayNumber,
     );
 
-    // make sure the date is actually valid
     if (
       date.getFullYear() !== yearNumber ||
       date.getMonth() !== monthNumber - 1 ||
@@ -86,11 +85,33 @@ export class UsersService {
     return `${year}-${month}-${day}`;
   }
 
+  private normalizeAvatarUrl(
+    avatarUrl?: string,
+  ): string | null {
+    if (
+      avatarUrl === undefined ||
+      avatarUrl === null
+    ) {
+      return null;
+    }
+
+    const normalized =
+      avatarUrl.trim();
+
+    if (
+      normalized === '' ||
+      normalized.toLowerCase() === 'null'
+    ) {
+      return null;
+    }
+
+    return normalized;
+  }
+
   async createProfile(
     userId: string,
     dto: CreateProfileDto,
   ) {
-    // check if the user already has a profile
     const {
       data: existingProfile,
       error: profileError,
@@ -131,7 +152,6 @@ export class UsersService {
     const normalizedUsername =
       username.trim().toLowerCase();
 
-    // check if the username is already taken
     const {
       data: existingUser,
       error: checkError,
@@ -165,8 +185,10 @@ export class UsersService {
     } = await supabase
       .from('users')
       .update({
-        username: normalizedUsername,
-        display_name: displayName,
+        username:
+          normalizedUsername,
+        display_name:
+          displayName,
         bio,
         interest,
         pronouns,
@@ -175,8 +197,12 @@ export class UsersService {
             dateOfBirth,
           ),
         city,
-        avatar_url: avatarUrl,
-        is_profile_completed: true,
+        avatar_url:
+          this.normalizeAvatarUrl(
+            avatarUrl,
+          ),
+        is_profile_completed:
+          true,
         updated_at:
           new Date().toISOString(),
       })
@@ -298,7 +324,6 @@ export class UsersService {
           .trim()
           .toLowerCase();
 
-      // check if the new username is already taken
       const {
         data: existingUser,
         error: checkError,
@@ -390,13 +415,14 @@ export class UsersService {
       dto.avatarUrl !== undefined
     ) {
       updates.avatar_url =
-        dto.avatarUrl;
+        this.normalizeAvatarUrl(
+          dto.avatarUrl,
+        );
     }
 
     updates.updated_at =
       new Date().toISOString();
 
-    // save the updated profile
     const {
       error,
     } = await supabase
@@ -497,7 +523,6 @@ export class UsersService {
         fileName,
       );
 
-    // save the avatar URL to the user's profile
     const {
       error: updateError,
     } = await supabase
@@ -573,20 +598,22 @@ export class UsersService {
 
     return {
       success: true,
-
       user: {
         id: user.id,
-        qrId: user.qr_id,
+        qrId:
+          user.qr_id,
         username:
           user.username,
         displayName:
           user.display_name,
-        bio: user.bio,
+        bio:
+          user.bio,
         interest:
           user.interest,
         pronouns:
           user.pronouns,
-        city: user.city,
+        city:
+          user.city,
         avatarUrl:
           user.avatar_url ??
           user.profile_image,
@@ -633,21 +660,15 @@ export class UsersService {
 
     return {
       success: true,
-
       message:
         'QR data generated successfully.',
-
       data: {
         qrId:
           user.qr_id,
-
-        // frontend uses this value to generate the QR code
         qrData:
           user.qr_id,
-
         username:
           user.username,
-
         displayName:
           user.display_name,
       },
