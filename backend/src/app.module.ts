@@ -17,6 +17,7 @@ import { ClubsModule } from './clubs/clubs.module';
 import { FriendsModule } from './friends/friends.module';
 import { PostsModule } from './posts/posts.module';
 import { BlocksModule } from './blocks/blocks.module';
+import { ExploreModule } from './explore/explore.module';
 
 import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
 
@@ -48,6 +49,7 @@ import { CustomThrottlerGuard } from './common/guards/custom-throttler.guard';
     PostsModule,
     BlocksModule,
     NotificationsModule,
+    ExploreModule,
   ],
 
   controllers: [

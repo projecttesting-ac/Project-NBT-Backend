@@ -50,9 +50,9 @@ export class MediaController {
     @Param('mediaId') mediaId: string,
   ) {
     // get the media URL
-    return (this.mediaService as any).getMediaUrl(
-      user.id,
-      mediaId,
-    );
+    return this.mediaService.getMediaUrl(
+  user.id,
+  mediaId,
+);
   }
 }

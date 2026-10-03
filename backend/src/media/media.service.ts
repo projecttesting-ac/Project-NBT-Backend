@@ -76,7 +76,6 @@ export class MediaService {
       .single();
 
     if (dbError) {
-      // remove the uploaded file if saving to the database fails
       await supabase.storage
         .from('media')
         .remove([
@@ -100,7 +99,12 @@ export class MediaService {
     userId: string,
     mediaId: string,
   ) {
-    // find the media file
+    /*
+     * ----------------------------------------------------
+     * 1. FIND MEDIA
+     * ----------------------------------------------------
+     */
+
     const {
       data: media,
       error: mediaError,
@@ -113,7 +117,10 @@ export class MediaService {
         original_name,
         mime_type
       `)
-      .eq('id', mediaId)
+      .eq(
+        'id',
+        mediaId,
+      )
       .single();
 
     if (
@@ -125,11 +132,21 @@ export class MediaService {
       );
     }
 
-    // owner can access their own media
+    /*
+     * ----------------------------------------------------
+     * 2. OWNER ACCESS
+     * ----------------------------------------------------
+     */
+
     let allowed =
       media.owner_id === userId;
 
-    // check if the media belongs to a conversation
+    /*
+     * ----------------------------------------------------
+     * 3. CONVERSATION MEDIA ACCESS
+     * ----------------------------------------------------
+     */
+
     if (!allowed) {
       const {
         data: attachments,
@@ -197,14 +214,134 @@ export class MediaService {
       }
     }
 
-    // reject unauthorized access
+    /*
+     * ----------------------------------------------------
+     * 4. POST MEDIA ACCESS
+     * ----------------------------------------------------
+     *
+     * Public post media can be accessed by users who
+     * are allowed to see that post.
+     */
+
+    if (!allowed) {
+      const {
+        data: postAttachments,
+        error:
+          postAttachmentError,
+      } = await supabase
+        .from(
+          'post_attachments',
+        )
+        .select(`
+          post_id,
+          posts!inner (
+            id,
+            user_id,
+            visibility,
+            is_deleted
+          )
+        `)
+        .eq(
+          'media_id',
+          mediaId,
+        );
+
+      if (postAttachmentError) {
+        throw new BadRequestException(
+          postAttachmentError.message,
+        );
+      }
+
+      for (
+        const attachment of
+          postAttachments ?? []
+      ) {
+        const post =
+          Array.isArray(
+            attachment.posts,
+          )
+            ? attachment.posts[0]
+            : attachment.posts;
+
+        if (!post) {
+          continue;
+        }
+
+        /*
+         * Deleted posts are never accessible.
+         */
+
+        if (
+          post.is_deleted
+        ) {
+          continue;
+        }
+
+        /*
+         * Currently only public posts are
+         * exposed through media URLs.
+         */
+
+        if (
+          post.visibility !==
+          'public'
+        ) {
+          continue;
+        }
+
+        /*
+         * Check blocking in both directions.
+         *
+         * We don't want a user to access public
+         * post media when either side has blocked
+         * the other.
+         */
+
+        const {
+          data: block,
+          error: blockError,
+        } = await supabase
+          .from('blocks')
+          .select(
+            'id',
+          )
+          .or(
+            `and(blocker_id.eq.${post.user_id},blocked_id.eq.${userId}),and(blocker_id.eq.${userId},blocked_id.eq.${post.user_id})`,
+          )
+          .limit(1)
+          .maybeSingle();
+
+        if (blockError) {
+          throw new BadRequestException(
+            blockError.message,
+          );
+        }
+
+        if (!block) {
+          allowed = true;
+          break;
+        }
+      }
+    }
+
+    /*
+     * ----------------------------------------------------
+     * 5. REJECT UNAUTHORIZED ACCESS
+     * ----------------------------------------------------
+     */
+
     if (!allowed) {
       throw new BadRequestException(
         'You are not allowed to access this media.',
       );
     }
 
-    // generate a temporary signed URL
+    /*
+     * ----------------------------------------------------
+     * 6. SIGNED URL
+     * ----------------------------------------------------
+     */
+
     const {
       data: signedUrlData,
       error: signedUrlError,

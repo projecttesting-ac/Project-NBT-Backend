@@ -13,35 +13,75 @@ export class CommentsService {
     private readonly notificationsService: NotificationsService,
   ) {}
 
-  async createComment(
+  private async getBlockedUserIds(
     userId: string,
-    postId: string,
-    content: string,
-    parentCommentId?: string,
-  ) {
-    if (!content || !content.trim()) {
+  ): Promise<string[]> {
+    const [
+      blockedByMeResult,
+      blockedMeResult,
+    ] = await Promise.all([
+      supabase
+        .from('blocks')
+        .select('blocked_id')
+        .eq('blocker_id', userId),
+
+      supabase
+        .from('blocks')
+        .select('blocker_id')
+        .eq('blocked_id', userId),
+    ]);
+
+    if (blockedByMeResult.error) {
       throw new BadRequestException(
-        'Comment content cannot be empty.',
+        blockedByMeResult.error.message,
       );
     }
 
-    const trimmedContent =
-      content.trim();
+    if (blockedMeResult.error) {
+      throw new BadRequestException(
+        blockedMeResult.error.message,
+      );
+    }
 
-    // check if the post exists
+    return [
+      ...(blockedByMeResult.data ?? []).map(
+        (item) => item.blocked_id,
+      ),
+      ...(blockedMeResult.data ?? []).map(
+        (item) => item.blocker_id,
+      ),
+    ];
+  }
+
+  private async validatePostAccess(
+    userId: string,
+    postId: string,
+  ) {
     const {
       data: post,
-      error: postError,
+      error,
     } = await supabase
       .from('posts')
-      .select('id, user_id')
-      .eq('id', postId)
-      .eq('is_deleted', false)
+      .select(
+        'id, user_id, visibility, is_deleted',
+      )
+      .eq(
+        'id',
+        postId,
+      )
+      .eq(
+        'is_deleted',
+        false,
+      )
+      .eq(
+        'visibility',
+        'public',
+      )
       .maybeSingle();
 
-    if (postError) {
+    if (error) {
       throw new BadRequestException(
-        postError.message,
+        error.message,
       );
     }
 
@@ -51,7 +91,52 @@ export class CommentsService {
       );
     }
 
-    // check the parent comment when this is a reply
+    if (
+      post.user_id !== userId
+    ) {
+      const blockedUserIds =
+        await this.getBlockedUserIds(
+          userId,
+        );
+
+      if (
+        blockedUserIds.includes(
+          post.user_id,
+        )
+      ) {
+        throw new BadRequestException(
+          'You cannot access this post.',
+        );
+      }
+    }
+
+    return post;
+  }
+
+  async createComment(
+    userId: string,
+    postId: string,
+    content: string,
+    parentCommentId?: string,
+  ) {
+    if (
+      !content ||
+      !content.trim()
+    ) {
+      throw new BadRequestException(
+        'Comment content cannot be empty.',
+      );
+    }
+
+    const trimmedContent =
+      content.trim();
+
+    const post =
+      await this.validatePostAccess(
+        userId,
+        postId,
+      );
+
     let parentComment: {
       id: string;
       post_id: string;
@@ -61,7 +146,8 @@ export class CommentsService {
     if (parentCommentId) {
       const {
         data,
-        error: parentCommentError,
+        error:
+          parentCommentError,
       } = await supabase
         .from('post_comments')
         .select(
@@ -93,10 +179,24 @@ export class CommentsService {
         );
       }
 
+      const blockedUserIds =
+        await this.getBlockedUserIds(
+          userId,
+        );
+
+      if (
+        blockedUserIds.includes(
+          data.user_id,
+        )
+      ) {
+        throw new BadRequestException(
+          'You cannot reply to this comment.',
+        );
+      }
+
       parentComment = data;
     }
 
-    // create the comment or reply
     const {
       data,
       error,
@@ -119,7 +219,6 @@ export class CommentsService {
     }
 
     if (parentComment) {
-      // notify the person whose comment was replied to
       await this.notificationsService
         .tryCreateNotification(
           parentComment.user_id,
@@ -131,7 +230,6 @@ export class CommentsService {
           'COMMENT',
         );
     } else {
-      // notify the post owner about the new comment
       await this.notificationsService
         .tryCreateNotification(
           post.user_id,
@@ -144,7 +242,6 @@ export class CommentsService {
         );
     }
 
-    // notify users mentioned in the comment
     await this.notificationsService
       .notifyMentionedUsers(
         trimmedContent,
@@ -167,34 +264,15 @@ export class CommentsService {
     userId: string,
     pagination: PaginationDto,
   ) {
-    // check whether the post exists
-    const {
-      data: post,
-      error: postError,
-    } = await supabase
-      .from('posts')
-      .select('id')
-      .eq(
-        'id',
-        postId,
-      )
-      .eq(
-        'is_deleted',
-        false,
-      )
-      .maybeSingle();
+    await this.validatePostAccess(
+      userId,
+      postId,
+    );
 
-    if (postError) {
-      throw new BadRequestException(
-        postError.message,
+    const blockedUserIds =
+      await this.getBlockedUserIds(
+        userId,
       );
-    }
-
-    if (!post) {
-      throw new BadRequestException(
-        'Post not found.',
-      );
-    }
 
     const page =
       pagination.page;
@@ -208,37 +286,51 @@ export class CommentsService {
     const to =
       from + limit - 1;
 
-    // get comments for the post
+    let query =
+      supabase
+        .from('post_comments')
+        .select(
+          `
+          id,
+          post_id,
+          user_id,
+          content,
+          parent_comment_id,
+          created_at,
+          updated_at,
+          is_edited,
+          is_deleted
+          `,
+          {
+            count: 'exact',
+          },
+        )
+        .eq(
+          'post_id',
+          postId,
+        )
+        .eq(
+          'is_deleted',
+          false,
+        );
+
+    if (
+      blockedUserIds.length >
+      0
+    ) {
+      query =
+        query.not(
+          'user_id',
+          'in',
+          `(${blockedUserIds.join(',')})`,
+        );
+    }
+
     const {
       data: comments,
       error,
       count: total,
-    } = await supabase
-      .from('post_comments')
-      .select(
-        `
-        id,
-        post_id,
-        user_id,
-        content,
-        parent_comment_id,
-        created_at,
-        updated_at,
-        is_edited,
-        is_deleted
-        `,
-        {
-          count: 'exact',
-        },
-      )
-      .eq(
-        'post_id',
-        postId,
-      )
-      .eq(
-        'is_deleted',
-        false,
-      )
+    } = await query
       .order(
         'created_at',
         {
@@ -295,7 +387,11 @@ export class CommentsService {
     postId: string,
     commentId: string,
   ) {
-    // check that the user owns the comment
+    await this.validatePostAccess(
+      userId,
+      postId,
+    );
+
     const {
       data: comment,
       error: commentError,
@@ -334,7 +430,6 @@ export class CommentsService {
       );
     }
 
-    // collect the comment and all its replies
     const idsToDelete: string[] = [
       commentId,
     ];
@@ -392,7 +487,6 @@ export class CommentsService {
         nextIds;
     }
 
-    // soft delete the whole comment tree
     const {
       data,
       error,
@@ -446,8 +540,14 @@ export class CommentsService {
         'Comment content cannot be empty.',
       );
     }
+
+    await this.validatePostAccess(
+      userId,
+      postId,
+    );
+
     const trimmedContent =
-    content.trim();
+      content.trim();
 
     const {
       data,
@@ -456,7 +556,7 @@ export class CommentsService {
       .from('post_comments')
       .update({
         content:
-        trimmedContent,
+          trimmedContent,
         is_edited: true,
         updated_at:
           new Date().toISOString(),
@@ -491,14 +591,14 @@ export class CommentsService {
         'Comment not found or you are not the owner.',
       );
     }
-    // notify users mentioned in the updated comment
+
     await this.notificationsService
-    .notifyMentionedUsers(
-    trimmedContent,
-    userId,
-    data.id,
-    'COMMENT',
-    );
+      .notifyMentionedUsers(
+        trimmedContent,
+        userId,
+        data.id,
+        'COMMENT',
+      );
 
     return {
       success: true,
