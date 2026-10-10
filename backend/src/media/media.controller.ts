@@ -1,3 +1,4 @@
+
 import {
   Controller,
   Get,
@@ -9,21 +10,21 @@ import {
 } from '@nestjs/common';
 
 import { Throttle } from '@nestjs/throttler';
-
 import { FileInterceptor } from '@nestjs/platform-express';
 
 import { MediaService } from './media.service';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ProfileCompletedGuard } from '../auth/profile-completed.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 
 @Controller('media')
+@UseGuards(JwtAuthGuard, ProfileCompletedGuard)
 export class MediaController {
   constructor(
     private readonly mediaService: MediaService,
   ) {}
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({
     default: {
       limit: 20,
@@ -36,23 +37,22 @@ export class MediaController {
     @CurrentUser() user: any,
     @UploadedFile() file: any,
   ) {
-    // upload media for the logged-in user
+    // Upload media for the logged-in user
     return this.mediaService.upload(
       user.id,
       file,
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Get(':mediaId/url')
   getMediaUrl(
     @CurrentUser() user: any,
     @Param('mediaId') mediaId: string,
   ) {
-    // get the media URL
+    // Get the media URL
     return this.mediaService.getMediaUrl(
-  user.id,
-  mediaId,
-);
+      user.id,
+      mediaId,
+    );
   }
 }

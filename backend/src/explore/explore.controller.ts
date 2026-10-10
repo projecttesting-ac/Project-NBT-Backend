@@ -1,3 +1,4 @@
+
 import {
   Controller,
   Get,
@@ -8,17 +9,18 @@ import {
 import { Throttle } from '@nestjs/throttler';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ProfileCompletedGuard } from '../auth/profile-completed.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 
 import { ExploreService } from './explore.service';
 
 @Controller('explore')
+@UseGuards(JwtAuthGuard, ProfileCompletedGuard)
 export class ExploreController {
   constructor(
     private readonly exploreService: ExploreService,
   ) {}
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({
     default: {
       limit: 30,

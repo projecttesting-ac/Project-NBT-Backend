@@ -1,9 +1,11 @@
+
 import {
   Body,
   Controller,
   Post,
   UseGuards,
 } from '@nestjs/common';
+
 import { Throttle } from '@nestjs/throttler';
 
 import { AuthService } from './auth.service';
@@ -14,15 +16,18 @@ import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
-import { JwtAuthGuard } from './jwt-auth.guard';
-import { CurrentUser } from './current-user.decorator';
 import { ResendOtpDto } from './dto/resend-otp.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { LogoutDto } from './dto/logout.dto';
 
+import { JwtAuthGuard } from './jwt-auth.guard';
+import { CurrentUser } from './current-user.decorator';
+
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+  ) {}
 
   // 5 requests / 10 minutes
   @Throttle({
@@ -33,9 +38,6 @@ export class AuthController {
   })
   @Post('register')
   register(@Body() dto: RegisterDto) {
-    console.log('Register Called');
-    console.log(dto);
-
     return this.authService.register(dto);
   }
 
@@ -84,10 +86,11 @@ export class AuthController {
   })
   @Post('resend-otp')
   resendOtp(@Body() dto: ResendOtpDto) {
-return this.authService.resendOtp(
-  dto.countryCode,
-  dto.mobileNumber,
-);  }
+    return this.authService.resendOtp(
+      dto.countryCode,
+      dto.mobileNumber,
+    );
+  }
 
   // 3 requests / 10 minutes
   @Throttle({
@@ -138,7 +141,10 @@ return this.authService.resendOtp(
     @CurrentUser() user: any,
     @Body() dto: ChangePasswordDto,
   ) {
-    return this.authService.changePassword(user.id, dto);
+    return this.authService.changePassword(
+      user.id,
+      dto,
+    );
   }
 
   @Post('refresh-token')

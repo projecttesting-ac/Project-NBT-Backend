@@ -1,3 +1,4 @@
+
 import {
   Body,
   Controller,
@@ -18,6 +19,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { ConversationsService } from './conversations.service';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ProfileCompletedGuard } from '../auth/profile-completed.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 
 import { AddGroupMembersDto } from './dto/add-group-members.dto';
@@ -33,22 +35,24 @@ import { GroupMentionQueryDto } from './dto/group-mention-query.dto';
 import { PaginationDto } from '../common/dto/pagination.dto';
 
 @Controller('conversations')
+@UseGuards(JwtAuthGuard, ProfileCompletedGuard)
 export class ConversationsController {
   constructor(
     private readonly conversationsService: ConversationsService,
   ) {}
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 20, ttl: 60 * 1000 } })
   @Post('group')
   createGroup(
     @CurrentUser() user: any,
     @Body() dto: CreateGroupDto,
   ) {
-    return this.conversationsService.createGroup(user.id, dto);
+    return this.conversationsService.createGroup(
+      user.id,
+      dto,
+    );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 120, ttl: 60 * 1000 } })
   @Post(':targetUserId')
   @UseInterceptors(FileInterceptor('file'))
@@ -66,7 +70,6 @@ export class ConversationsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Get()
   getConversations(
     @CurrentUser() user: any,
@@ -78,7 +81,6 @@ export class ConversationsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 60, ttl: 60 * 1000 } })
   @Get(':conversationId/mention-users')
   getGroupMentionUsers(
@@ -93,7 +95,6 @@ export class ConversationsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 60, ttl: 60 * 1000 } })
   @Get(':conversationId/members')
   getGroupMembers(
@@ -106,7 +107,6 @@ export class ConversationsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 20, ttl: 60 * 1000 } })
   @Post(':conversationId/members')
   addGroupMembers(
@@ -121,7 +121,6 @@ export class ConversationsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 30, ttl: 60 * 1000 } })
   @Delete(':conversationId/members/:targetUserId')
   removeGroupMember(
@@ -136,7 +135,6 @@ export class ConversationsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 10, ttl: 60 * 1000 } })
   @Delete(':conversationId/leave')
   leaveGroup(
@@ -149,7 +147,6 @@ export class ConversationsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 20, ttl: 60 * 1000 } })
   @Patch(':conversationId/members/:targetUserId/role')
   updateGroupMemberRole(
@@ -166,7 +163,6 @@ export class ConversationsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 20, ttl: 60 * 1000 } })
   @Patch(':conversationId/group')
   updateGroup(
@@ -182,7 +178,6 @@ export class ConversationsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 120, ttl: 60 * 1000 } })
   @Get(':conversationId/messages')
   getMessages(
@@ -197,7 +192,6 @@ export class ConversationsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 120, ttl: 60 * 1000 } })
   @Post(':conversationId/messages')
   @UseInterceptors(FileInterceptor('file'))
@@ -215,7 +209,6 @@ export class ConversationsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Patch(':conversationId/read')
   markMessagesAsRead(
     @CurrentUser() user: any,
@@ -227,7 +220,6 @@ export class ConversationsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Patch(':conversationId/messages/:messageId/delivered')
   markMessageAsDelivered(
     @CurrentUser() user: any,
@@ -241,7 +233,6 @@ export class ConversationsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Patch(':conversationId/messages/:messageId/seen')
   markMessageAsSeen(
     @CurrentUser() user: any,
@@ -255,7 +246,6 @@ export class ConversationsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 30, ttl: 60 * 1000 } })
   @Patch(':conversationId/messages/:messageId')
   updateMessage(
@@ -272,7 +262,6 @@ export class ConversationsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 30, ttl: 60 * 1000 } })
   @Delete(':conversationId/messages/:messageId')
   deleteMessage(
@@ -287,7 +276,6 @@ export class ConversationsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 30, ttl: 60 * 1000 } })
   @Post(':conversationId/messages/:messageId/forward')
   forwardMessage(
@@ -304,7 +292,6 @@ export class ConversationsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 60, ttl: 60 * 1000 } })
   @Post(':conversationId/messages/:messageId/reaction')
   addReaction(
@@ -321,7 +308,6 @@ export class ConversationsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 60, ttl: 60 * 1000 } })
   @Delete(':conversationId/messages/:messageId/reaction')
   removeReaction(

@@ -1,3 +1,4 @@
+
 import {
   Controller,
   Delete,
@@ -11,17 +12,18 @@ import {
 import { BlocksService } from './blocks.service';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ProfileCompletedGuard } from '../auth/profile-completed.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { PaginationDto } from '../common/dto/pagination.dto';
 
 @Controller('blocks')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ProfileCompletedGuard)
 export class BlocksController {
   constructor(
     private readonly blocksService: BlocksService,
   ) {}
 
-  // block another user
+  // Block another user
   @Post()
   blockUser(
     @CurrentUser() user: any,
@@ -33,7 +35,7 @@ export class BlocksController {
     );
   }
 
-  // remove a user from the blocked list
+  // Remove a user from the blocked list
   @Delete()
   unblockUser(
     @CurrentUser() user: any,
@@ -45,7 +47,7 @@ export class BlocksController {
     );
   }
 
-  // get users blocked by the current user
+  // Get users blocked by the current user
   @Get()
   getBlockedUsers(
     @CurrentUser() user: any,
@@ -57,7 +59,7 @@ export class BlocksController {
     );
   }
 
-  // check whether a user is blocked
+  // Check whether a user is blocked
   @Get('status')
   getBlockStatus(
     @CurrentUser() user: any,

@@ -1,3 +1,4 @@
+
 import {
   Body,
   Controller,
@@ -13,11 +14,13 @@ import {
 import { Throttle } from '@nestjs/throttler';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ProfileCompletedGuard } from '../auth/profile-completed.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
+
 import { FriendsService } from './friends.service';
 
 @Controller('friends')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ProfileCompletedGuard)
 export class FriendsController {
   constructor(
     private readonly friendsService: FriendsService,

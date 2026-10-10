@@ -1,3 +1,4 @@
+
 import {
   Body,
   Controller,
@@ -11,7 +12,6 @@ import {
 } from '@nestjs/common';
 
 import { Throttle } from '@nestjs/throttler';
-
 import { FileInterceptor } from '@nestjs/platform-express';
 
 import { UsersService } from './users.service';
@@ -20,6 +20,7 @@ import { CreateProfileDto } from './dto/create-profile.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ProfileCompletedGuard } from '../auth/profile-completed.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 
 @Controller('users')
@@ -40,7 +41,6 @@ export class UsersController {
     @CurrentUser() user: any,
     @Body() dto: CreateProfileDto,
   ) {
-    // create the user's profile
     return this.usersService.createProfile(
       user.id,
       dto,
@@ -58,7 +58,6 @@ export class UsersController {
   getMe(
     @CurrentUser() user: any,
   ) {
-    // get the logged in user's profile
     return this.usersService.getMe(
       user.id,
     );
@@ -75,13 +74,12 @@ export class UsersController {
   setOnline(
     @CurrentUser() user: any,
   ) {
-    // mark the user as online
     return this.usersService.setOnline(
       user.id,
     );
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, ProfileCompletedGuard)
   @Throttle({
     default: {
       limit: 60,
@@ -92,7 +90,6 @@ export class UsersController {
   setOffline(
     @CurrentUser() user: any,
   ) {
-    // mark the user as offline
     return this.usersService.setOffline(
       user.id,
     );
@@ -110,7 +107,6 @@ export class UsersController {
     @CurrentUser() user: any,
     @Body() dto: UpdateProfileDto,
   ) {
-    // update the user's profile
     return this.usersService.updateProfile(
       user.id,
       dto,
@@ -127,7 +123,6 @@ export class UsersController {
   checkUsername(
     @Param('username') username: string,
   ) {
-    // check if the username is available
     return this.usersService.checkUsername(
       username,
     );
@@ -152,14 +147,13 @@ export class UsersController {
     @CurrentUser() user: any,
     @UploadedFile() file: any,
   ) {
-    // upload the user's avatar
     return this.usersService.uploadAvatar(
       user.id,
       file,
     );
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, ProfileCompletedGuard)
   @Throttle({
     default: {
       limit: 30,
@@ -170,13 +164,12 @@ export class UsersController {
   getMyQr(
     @CurrentUser() user: any,
   ) {
-    // get the user's QR data
     return this.usersService.getMyQr(
       user.id,
     );
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, ProfileCompletedGuard)
   @Throttle({
     default: {
       limit: 30,
@@ -187,7 +180,6 @@ export class UsersController {
   resolveQrProfile(
     @Param('qrId') qrId: string,
   ) {
-    // find the profile linked to the QR
     return this.usersService.resolveQrProfile(
       qrId,
     );

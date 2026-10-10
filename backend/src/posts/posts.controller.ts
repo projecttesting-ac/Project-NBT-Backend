@@ -1,3 +1,4 @@
+
 import {
   Body,
   Controller,
@@ -17,16 +18,17 @@ import { UpdatePostDto } from './dto/update-post.dto';
 import { PostsService } from './posts.service';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ProfileCompletedGuard } from '../auth/profile-completed.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 import { PaginationDto } from '../common/dto/pagination.dto';
 
 @Controller('posts')
+@UseGuards(JwtAuthGuard, ProfileCompletedGuard)
 export class PostsController {
   constructor(
     private readonly postsService: PostsService,
   ) {}
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({
     default: {
       limit: 20,
@@ -44,7 +46,6 @@ export class PostsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Get()
   getPosts(
     @CurrentUser() user: any,
@@ -56,7 +57,6 @@ export class PostsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Get(':postId')
   getPostById(
     @CurrentUser() user: any,
@@ -68,7 +68,6 @@ export class PostsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({
     default: {
       limit: 100,
@@ -86,7 +85,6 @@ export class PostsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Patch(':postId')
   updatePost(
     @CurrentUser() user: any,
@@ -100,7 +98,6 @@ export class PostsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Delete(':postId')
   deletePost(
     @CurrentUser() user: any,
@@ -112,7 +109,6 @@ export class PostsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({
     default: {
       limit: 60,
@@ -130,7 +126,6 @@ export class PostsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({
     default: {
       limit: 60,
@@ -148,7 +143,6 @@ export class PostsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({
     default: {
       limit: 60,
@@ -166,7 +160,6 @@ export class PostsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
   @Throttle({
     default: {
       limit: 60,

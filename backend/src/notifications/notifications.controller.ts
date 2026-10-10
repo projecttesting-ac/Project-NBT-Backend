@@ -1,3 +1,4 @@
+
 import {
   Body,
   Controller,
@@ -12,13 +13,14 @@ import {
 import { Throttle } from '@nestjs/throttler';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ProfileCompletedGuard } from '../auth/profile-completed.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 
 import { UpdateNotificationPreferencesDto } from './dto/update-notification-preferences.dto';
 import { NotificationsService } from './notifications.service';
 
 @Controller('notifications')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, ProfileCompletedGuard)
 @Throttle({
   default: {
     limit: 60,
@@ -30,32 +32,12 @@ export class NotificationsController {
     private readonly notificationsService: NotificationsService,
   ) {}
 
-  // ============================================================
-  // GET MY NOTIFICATIONS
-  // ============================================================
-  //
-  // Examples:
-  //
-  // GET /api/notifications
-  // GET /api/notifications?page=1&limit=20
-  // GET /api/notifications?category=connections
-  // GET /api/notifications?category=clubs
-  //
-  // The category parameter is optional.
-  // ============================================================
-
   @Get()
   getMyNotifications(
     @CurrentUser() user: any,
-
-    @Query('page')
-    page?: string,
-
-    @Query('limit')
-    limit?: string,
-
-    @Query('category')
-    category?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+    @Query('category') category?: string,
   ) {
     return this.notificationsService.getMyNotifications(
       user.id,
@@ -64,17 +46,6 @@ export class NotificationsController {
       category || 'all',
     );
   }
-
-  // ============================================================
-  // GET UNREAD COUNT
-  // ============================================================
-  //
-  // Used for the notification badge in the app.
-  //
-  // Example:
-  //
-  // GET /api/notifications/unread-count
-  // ============================================================
 
   @Get('unread-count')
   getUnreadCount(
@@ -85,10 +56,6 @@ export class NotificationsController {
     );
   }
 
-  // ============================================================
-  // GET NOTIFICATION PREFERENCES
-  // ============================================================
-
   @Get('preferences')
   getNotificationPreferences(
     @CurrentUser() user: any,
@@ -98,36 +65,16 @@ export class NotificationsController {
     );
   }
 
-  // ============================================================
-  // UPDATE NOTIFICATION PREFERENCES
-  // ============================================================
-  //
-  // The frontend can send only the fields it wants to change.
-  //
-  // Example:
-  //
-  // {
-  //   "clubNotifications": false,
-  //   "eventNotifications": true
-  // }
-  // ============================================================
-
   @Patch('preferences')
   updateNotificationPreferences(
     @CurrentUser() user: any,
-
-    @Body()
-    dto: UpdateNotificationPreferencesDto,
+    @Body() dto: UpdateNotificationPreferencesDto,
   ) {
     return this.notificationsService.updateNotificationPreferences(
       user.id,
       dto,
     );
   }
-
-  // ============================================================
-  // MARK ALL AS READ
-  // ============================================================
 
   @Patch('read-all')
   markAllAsRead(
@@ -138,29 +85,16 @@ export class NotificationsController {
     );
   }
 
-  // ============================================================
-  // MARK ONE NOTIFICATION AS READ
-  // ============================================================
-
   @Patch(':notificationId/read')
   markAsRead(
     @CurrentUser() user: any,
-
-    @Param('notificationId')
-    notificationId: string,
+    @Param('notificationId') notificationId: string,
   ) {
     return this.notificationsService.markAsRead(
       user.id,
       notificationId,
     );
   }
-
-  // ============================================================
-  // CLEAR ALL NOTIFICATIONS
-  // ============================================================
-  //
-  // This is used by the "Clear" action on the notification page.
-  // ============================================================
 
   @Delete('clear-all')
   clearAllNotifications(
@@ -171,16 +105,10 @@ export class NotificationsController {
     );
   }
 
-  // ============================================================
-  // DELETE ONE NOTIFICATION
-  // ============================================================
-
   @Delete(':notificationId')
   deleteNotification(
     @CurrentUser() user: any,
-
-    @Param('notificationId')
-    notificationId: string,
+    @Param('notificationId') notificationId: string,
   ) {
     return this.notificationsService.deleteNotification(
       user.id,

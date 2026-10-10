@@ -1,3 +1,4 @@
+
 import {
   Body,
   Controller,
@@ -13,7 +14,6 @@ import {
 } from '@nestjs/common';
 
 import { Throttle } from '@nestjs/throttler';
-
 import { FileInterceptor } from '@nestjs/platform-express';
 
 import { UpdateEventDto } from './dto/update-event.dto';
@@ -21,6 +21,7 @@ import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventStatusDto } from './dto/update-event-status.dto';
 
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { ProfileCompletedGuard } from '../auth/profile-completed.guard';
 import { CurrentUser } from '../auth/current-user.decorator';
 
 import { PaginationDto } from '../common/dto/pagination.dto';
@@ -33,7 +34,7 @@ export class EventsController {
     private readonly eventsService: EventsService,
   ) {}
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, ProfileCompletedGuard)
   @Throttle({
     default: {
       limit: 20,
@@ -58,7 +59,7 @@ export class EventsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, ProfileCompletedGuard)
   @Throttle({
     default: {
       limit: 20,
@@ -91,7 +92,7 @@ export class EventsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, ProfileCompletedGuard)
   @Throttle({
     default: {
       limit: 20,
@@ -109,7 +110,7 @@ export class EventsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, ProfileCompletedGuard)
   @Throttle({
     default: {
       limit: 20,
@@ -142,7 +143,7 @@ export class EventsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, ProfileCompletedGuard)
   @Throttle({
     default: {
       limit: 60,
@@ -173,7 +174,7 @@ export class EventsController {
     return this.eventsService.findOne(id);
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, ProfileCompletedGuard)
   @Throttle({
     default: {
       limit: 20,
@@ -193,7 +194,7 @@ export class EventsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, ProfileCompletedGuard)
   @Throttle({
     default: {
       limit: 20,
@@ -211,7 +212,7 @@ export class EventsController {
     );
   }
 
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard, ProfileCompletedGuard)
   @Throttle({
     default: {
       limit: 20,
