@@ -2,13 +2,12 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
-
 import { randomUUID } from 'crypto';
 
 import { CreateProfileDto } from './dto/create-profile.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
-
 import { supabase } from '../config/supabase';
 
 @Injectable()
@@ -16,7 +15,7 @@ export class UsersService {
   private convertDateOfBirth(
     dateOfBirth?: string,
   ): string | undefined {
-    if (!dateOfBirth) {
+    if (dateOfBirth === undefined || dateOfBirth === null) {
       return undefined;
     }
 
@@ -55,16 +54,12 @@ export class UsersService {
       date.getMonth() !== monthNumber - 1 ||
       date.getDate() !== dayNumber
     ) {
-      throw new BadRequestException(
-        'Invalid date of birth.',
-      );
+      throw new BadRequestException('Invalid date of birth.');
     }
 
     const today = new Date();
 
-    let age =
-      today.getFullYear() -
-      yearNumber;
+    let age = today.getFullYear() - yearNumber;
 
     const birthdayThisYear = new Date(
       today.getFullYear(),
@@ -86,17 +81,13 @@ export class UsersService {
   }
 
   private normalizeAvatarUrl(
-    avatarUrl?: string,
+    avatarUrl?: string | null,
   ): string | null {
-    if (
-      avatarUrl === undefined ||
-      avatarUrl === null
-    ) {
+    if (avatarUrl === undefined || avatarUrl === null) {
       return null;
     }
 
-    const normalized =
-      avatarUrl.trim();
+    const normalized = avatarUrl.trim();
 
     if (
       normalized === '' ||
@@ -108,6 +99,42 @@ export class UsersService {
     return normalized;
   }
 
+  private validateCoordinates(
+    latitude?: number | null,
+    longitude?: number | null,
+  ): void {
+    if (latitude !== undefined && latitude !== null) {
+      if (
+        !Number.isFinite(latitude) ||
+        latitude < -90 ||
+        latitude > 90
+      ) {
+        throw new BadRequestException(
+          'Latitude must be between -90 and 90.',
+        );
+      }
+    }
+
+    if (longitude !== undefined && longitude !== null) {
+      if (
+        !Number.isFinite(longitude) ||
+        longitude < -180 ||
+        longitude > 180
+      ) {
+        throw new BadRequestException(
+          'Longitude must be between -180 and 180.',
+        );
+      }
+    }
+  }
+
+  private removePasswordHash<
+    T extends { password_hash?: unknown },
+  >(user: T): Omit<T, 'password_hash'> {
+    const { password_hash, ...safeUser } = user;
+    return safeUser;
+  }
+
   async createProfile(
     userId: string,
     dto: CreateProfileDto,
@@ -117,115 +144,74 @@ export class UsersService {
       error: profileError,
     } = await supabase
       .from('users')
-      .select('is_profile_completed')
+      .select('id, is_profile_completed')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
-    if (
-      profileError ||
-      !existingProfile
-    ) {
-      throw new BadRequestException(
-        'User not found.',
-      );
+    if (profileError) {
+      throw new BadRequestException(profileError.message);
     }
 
-    if (
-      existingProfile.is_profile_completed === true
-    ) {
-      throw new ConflictException(
-        'Profile already created.',
-      );
+    if (!existingProfile) {
+      throw new NotFoundException('User not found.');
     }
 
-    const {
-      username,
-      displayName,
-      bio,
-      interest,
-      pronouns,
-      dateOfBirth,
-      city,
-      avatarUrl,
-    } = dto;
+    if (existingProfile.is_profile_completed === true) {
+      throw new ConflictException('Profile already created.');
+    }
 
-    const normalizedUsername =
-      username.trim().toLowerCase();
+    const normalizedUsername = dto.username.trim().toLowerCase();
 
     const {
       data: existingUser,
-      error: checkError,
+      error: usernameError,
     } = await supabase
       .from('users')
       .select('id')
-      .eq(
-        'username',
-        normalizedUsername,
-      )
+      .eq('username', normalizedUsername)
       .maybeSingle();
 
-    if (checkError) {
-      throw new BadRequestException(
-        checkError.message,
-      );
+    if (usernameError) {
+      throw new BadRequestException(usernameError.message);
     }
 
-    if (
-      existingUser &&
-      existingUser.id !== userId
-    ) {
-      throw new ConflictException(
-        'Username already taken.',
-      );
+    if (existingUser && existingUser.id !== userId) {
+      throw new ConflictException('Username already taken.');
     }
 
-    const {
-      data,
-      error,
-    } = await supabase
+    this.validateCoordinates(dto.latitude, dto.longitude);
+
+    const updateValues = {
+      username: normalizedUsername,
+      display_name: dto.displayName,
+      bio: dto.bio,
+      interest: dto.interest,
+      pronouns: dto.pronouns,
+      date_of_birth: this.convertDateOfBirth(dto.dateOfBirth),
+      city: dto.city,
+      avatar_url: this.normalizeAvatarUrl(dto.avatarUrl),
+      cover_image_url: this.normalizeAvatarUrl(dto.coverImageUrl),
+      latitude: dto.latitude ?? null,
+      longitude: dto.longitude ?? null,
+      is_profile_completed: true,
+      updated_at: new Date().toISOString(),
+    };
+
+    const { data, error } = await supabase
       .from('users')
-      .update({
-        username:
-          normalizedUsername,
-        display_name:
-          displayName,
-        bio,
-        interest,
-        pronouns,
-        date_of_birth:
-          this.convertDateOfBirth(
-            dateOfBirth,
-          ),
-        city,
-        avatar_url:
-          this.normalizeAvatarUrl(
-            avatarUrl,
-          ),
-        is_profile_completed:
-          true,
-        updated_at:
-          new Date().toISOString(),
-      })
+      .update(updateValues)
       .eq('id', userId)
       .select()
       .single();
 
     if (error) {
-      throw new BadRequestException(
-        error.message,
-      );
+      throw new BadRequestException(error.message);
     }
-
-    const {
-      password_hash,
-      ...safeUser
-    } = data;
 
     return {
       success: true,
-      message:
-        'Profile created successfully.',
-      user: safeUser,
+      message: 'Profile created successfully.',
+      user: this.removePasswordHash(data),
     };
   }
 
@@ -237,60 +223,45 @@ export class UsersService {
       .from('users')
       .select('*')
       .eq('id', userId)
-      .single();
+      .maybeSingle();
 
-    if (
-      error ||
-      !user
-    ) {
-      throw new BadRequestException(
-        'User not found.',
-      );
+    if (error) {
+      throw new BadRequestException(error.message);
     }
 
-    const {
-      password_hash,
-      ...safeUser
-    } = user;
+    if (!user) {
+      throw new NotFoundException('User not found.');
+    }
 
     return {
       success: true,
-      user: safeUser,
+      user: this.removePasswordHash(user),
     };
   }
 
   async setOnline(userId: string) {
-    const {
-      error,
-    } = await supabase
+    const { error } = await supabase
       .from('users')
       .update({
         is_online: true,
-        updated_at:
-          new Date().toISOString(),
+        updated_at: new Date().toISOString(),
       })
       .eq('id', userId);
 
     if (error) {
-      throw new BadRequestException(
-        error.message,
-      );
+      throw new BadRequestException(error.message);
     }
 
     return {
       success: true,
-      message:
-        'User is online.',
+      message: 'User is online.',
     };
   }
 
   async setOffline(userId: string) {
-    const now =
-      new Date().toISOString();
+    const now = new Date().toISOString();
 
-    const {
-      error,
-    } = await supabase
+    const { error } = await supabase
       .from('users')
       .update({
         is_online: false,
@@ -300,156 +271,141 @@ export class UsersService {
       .eq('id', userId);
 
     if (error) {
-      throw new BadRequestException(
-        error.message,
-      );
+      throw new BadRequestException(error.message);
     }
 
     return {
       success: true,
-      message:
-        'User is offline.',
+      message: 'User is offline.',
     };
   }
 
   async updateProfile(
-    userId: string,
-    dto: UpdateProfileDto,
-  ) {
-    if (
-      dto.username !== undefined
-    ) {
-      const normalizedUsername =
-        dto.username
-          .trim()
-          .toLowerCase();
+  userId: string,
+  dto: UpdateProfileDto,
+) {
+  const updates: Record<string, unknown> = {};
 
-      const {
-        data: existingUser,
-        error: checkError,
-      } = await supabase
-        .from('users')
-        .select('id')
-        .eq(
-          'username',
-          normalizedUsername,
-        )
-        .maybeSingle();
-
-      if (checkError) {
-        throw new BadRequestException(
-          checkError.message,
-        );
-      }
-
-      if (
-        existingUser &&
-        existingUser.id !== userId
-      ) {
-        throw new ConflictException(
-          'Username already taken.',
-        );
-      }
-
-      dto.username =
-        normalizedUsername;
-    }
-
-    const updates: Record<
-      string,
-      any
-    > = {};
-
-    if (
-      dto.displayName !== undefined
-    ) {
-      updates.display_name =
-        dto.displayName;
-    }
-
-    if (
-      dto.username !== undefined
-    ) {
-      updates.username =
-        dto.username;
-    }
-
-    if (
-      dto.bio !== undefined
-    ) {
-      updates.bio =
-        dto.bio;
-    }
-
-    if (
-      dto.city !== undefined
-    ) {
-      updates.city =
-        dto.city;
-    }
-
-    if (
-      dto.interest !== undefined
-    ) {
-      updates.interest =
-        dto.interest;
-    }
-
-    if (
-      dto.pronouns !== undefined
-    ) {
-      updates.pronouns =
-        dto.pronouns;
-    }
-
-    if (
-      dto.dateOfBirth !== undefined
-    ) {
-      updates.date_of_birth =
-        this.convertDateOfBirth(
-          dto.dateOfBirth,
-        );
-    }
-
-    if (
-      dto.avatarUrl !== undefined
-    ) {
-      updates.avatar_url =
-        this.normalizeAvatarUrl(
-          dto.avatarUrl,
-        );
-    }
-
-    updates.updated_at =
-      new Date().toISOString();
+  if (dto.username !== undefined) {
+    const normalizedUsername = dto.username.trim().toLowerCase();
 
     const {
-      error,
+      data: existingUser,
+      error: usernameError,
     } = await supabase
       .from('users')
-      .update(updates)
-      .eq('id', userId);
+      .select('id')
+      .eq('username', normalizedUsername)
+      .maybeSingle();
 
-    if (error) {
-      throw new BadRequestException(
-        error.message,
-      );
+    if (usernameError) {
+      throw new BadRequestException(usernameError.message);
     }
 
-    return {
-      success: true,
-      message:
-        'Profile updated successfully.',
-    };
+    if (existingUser && existingUser.id !== userId) {
+      throw new ConflictException('Username already taken.');
+    }
+
+    updates.username = normalizedUsername;
   }
 
-  async checkUsername(
-    username: string,
-  ) {
-    const normalizedUsername =
-      username
-        .trim()
-        .toLowerCase();
+  this.validateCoordinates(dto.latitude, dto.longitude);
+
+  if (dto.displayName !== undefined) {
+    updates.display_name = dto.displayName;
+  }
+
+  if (dto.bio !== undefined) {
+    updates.bio = dto.bio;
+  }
+
+  if (dto.city !== undefined) {
+    updates.city = dto.city;
+  }
+
+  if (dto.interest !== undefined) {
+    updates.interest = dto.interest;
+  }
+
+  if (dto.pronouns !== undefined) {
+    updates.pronouns = dto.pronouns;
+  }
+
+  if (dto.dateOfBirth !== undefined) {
+    updates.date_of_birth = this.convertDateOfBirth(
+      dto.dateOfBirth,
+    );
+  }
+
+  if (dto.avatarUrl !== undefined) {
+    updates.avatar_url = this.normalizeAvatarUrl(
+      dto.avatarUrl,
+    );
+  }
+
+  if (dto.coverImageUrl !== undefined) {
+    updates.cover_image_url = this.normalizeAvatarUrl(
+      dto.coverImageUrl,
+    );
+  }
+
+  if (dto.latitude !== undefined) {
+    updates.latitude = dto.latitude;
+  }
+
+  if (dto.longitude !== undefined) {
+    updates.longitude = dto.longitude;
+  }
+
+  if (Object.keys(updates).length === 0) {
+    throw new BadRequestException(
+      'At least one profile field must be provided.',
+    );
+  }
+
+  // Verify that the user exists before attempting the update.
+  const {
+    data: existingProfile,
+    error: profileCheckError,
+  } = await supabase
+    .from('users')
+    .select('id')
+    .eq('id', userId)
+    .maybeSingle();
+
+  if (profileCheckError) {
+    throw new BadRequestException(profileCheckError.message);
+  }
+
+  if (!existingProfile) {
+    throw new NotFoundException('User not found.');
+  }
+
+  updates.updated_at = new Date().toISOString();
+
+  // Perform the database update only after validation succeeds.
+  const { error: updateError } = await supabase
+    .from('users')
+    .update(updates)
+    .eq('id', userId);
+
+  if (updateError) {
+    throw new BadRequestException(updateError.message);
+  }
+
+  // Return success only when Supabase reports no update error.
+  return {
+    success: true,
+    message: 'Profile updated successfully.',
+  };
+}
+
+  async checkUsername(username: string) {
+    const normalizedUsername = username.trim().toLowerCase();
+
+    if (!normalizedUsername) {
+      throw new BadRequestException('Username is required.');
+    }
 
     const {
       data,
@@ -457,16 +413,11 @@ export class UsersService {
     } = await supabase
       .from('users')
       .select('id')
-      .eq(
-        'username',
-        normalizedUsername,
-      )
+      .eq('username', normalizedUsername)
       .maybeSingle();
 
     if (error) {
-      throw new BadRequestException(
-        error.message,
-      );
+      throw new BadRequestException(error.message);
     }
 
     return {
@@ -479,84 +430,80 @@ export class UsersService {
     userId: string,
     file: any,
   ) {
-    if (!file) {
+    if (!file?.buffer || !file?.originalname || !file?.mimetype) {
+      throw new BadRequestException('Avatar file is required.');
+    }
+
+    if (!file.mimetype.startsWith('image/')) {
+      throw new BadRequestException('Only image files are allowed.');
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
       throw new BadRequestException(
-        'Avatar file is required.',
+        'Avatar image must not exceed 5 MB.',
       );
     }
 
-    const fileExt =
-      file.originalname
-        .split('.')
-        .pop();
+    const fileExt = file.originalname.split('.').pop()?.toLowerCase();
 
-    const fileName =
-      `${userId}-${randomUUID()}.${fileExt}`;
+    const allowedExtensions = ['jpg', 'jpeg', 'png', 'webp', 'gif'];
 
-    const {
-      error: uploadError,
-    } = await supabase.storage
-      .from('avatars')
-      .upload(
-        fileName,
-        file.buffer,
-        {
-          contentType:
-            file.mimetype,
-          upsert: true,
-        },
+    if (!fileExt || !allowedExtensions.includes(fileExt)) {
+      throw new BadRequestException(
+        'Supported formats are JPG, JPEG, PNG, WEBP, and GIF.',
       );
+    }
+
+    const fileName = `${userId}-${randomUUID()}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('avatars')
+      .upload(fileName, file.buffer, {
+        contentType: file.mimetype,
+        upsert: false,
+      });
 
     if (uploadError) {
-      throw new BadRequestException(
-        uploadError.message,
-      );
+      throw new BadRequestException(uploadError.message);
     }
 
     const {
-      data: {
-        publicUrl,
-      },
+      data: { publicUrl },
     } = supabase.storage
       .from('avatars')
-      .getPublicUrl(
-        fileName,
-      );
+      .getPublicUrl(fileName);
 
     const {
+      data: updatedUser,
       error: updateError,
     } = await supabase
       .from('users')
       .update({
-        avatar_url:
-          publicUrl,
-        updated_at:
-          new Date().toISOString(),
+        avatar_url: publicUrl,
+        updated_at: new Date().toISOString(),
       })
-      .eq('id', userId);
+      .eq('id', userId)
+      .select('id')
+      .maybeSingle();
 
     if (updateError) {
-      throw new BadRequestException(
-        updateError.message,
-      );
+      throw new BadRequestException(updateError.message);
+    }
+
+    if (!updatedUser) {
+      throw new NotFoundException('User not found.');
     }
 
     return {
       success: true,
-      message:
-        'Avatar uploaded successfully.',
-      avatarUrl:
-        publicUrl,
+      message: 'Avatar uploaded successfully.',
+      avatarUrl: publicUrl,
     };
   }
 
-  async resolveQrProfile(
-    qrId: string,
-  ) {
-    if (!qrId) {
-      throw new BadRequestException(
-        'QR ID is required.',
-      );
+  async resolveQrProfile(qrId: string) {
+    if (!qrId?.trim()) {
+      throw new BadRequestException('QR ID is required.');
     }
 
     const {
@@ -575,52 +522,36 @@ export class UsersService {
         city,
         avatar_url,
         profile_image,
+        cover_image_url,
         is_online,
         last_seen
       `)
-      .eq(
-        'qr_id',
-        qrId,
-      )
+      .eq('qr_id', qrId)
       .maybeSingle();
 
     if (error) {
-      throw new BadRequestException(
-        error.message,
-      );
+      throw new BadRequestException(error.message);
     }
 
     if (!user) {
-      throw new BadRequestException(
-        'Invalid or expired QR code.',
-      );
+      throw new NotFoundException('Invalid or expired QR code.');
     }
 
     return {
       success: true,
       user: {
         id: user.id,
-        qrId:
-          user.qr_id,
-        username:
-          user.username,
-        displayName:
-          user.display_name,
-        bio:
-          user.bio,
-        interest:
-          user.interest,
-        pronouns:
-          user.pronouns,
-        city:
-          user.city,
-        avatarUrl:
-          user.avatar_url ??
-          user.profile_image,
-        isOnline:
-          user.is_online,
-        lastSeen:
-          user.last_seen,
+        qrId: user.qr_id,
+        username: user.username,
+        displayName: user.display_name,
+        bio: user.bio,
+        interest: user.interest,
+        pronouns: user.pronouns,
+        city: user.city,
+        avatarUrl: user.avatar_url ?? user.profile_image,
+        coverImageUrl: user.cover_image_url,
+        isOnline: user.is_online,
+        lastSeen: user.last_seen,
       },
     };
   }
@@ -631,25 +562,16 @@ export class UsersService {
       error,
     } = await supabase
       .from('users')
-      .select(`
-        id,
-        qr_id,
-        username,
-        display_name
-      `)
-      .eq(
-        'id',
-        userId,
-      )
-      .single();
+      .select('id, qr_id, username, display_name')
+      .eq('id', userId)
+      .maybeSingle();
 
-    if (
-      error ||
-      !user
-    ) {
-      throw new BadRequestException(
-        'User not found.',
-      );
+    if (error) {
+      throw new BadRequestException(error.message);
+    }
+
+    if (!user) {
+      throw new NotFoundException('User not found.');
     }
 
     if (!user.qr_id) {
@@ -660,17 +582,12 @@ export class UsersService {
 
     return {
       success: true,
-      message:
-        'QR data generated successfully.',
+      message: 'QR data generated successfully.',
       data: {
-        qrId:
-          user.qr_id,
-        qrData:
-          user.qr_id,
-        username:
-          user.username,
-        displayName:
-          user.display_name,
+        qrId: user.qr_id,
+        qrData: user.qr_id,
+        username: user.username,
+        displayName: user.display_name,
       },
     };
   }

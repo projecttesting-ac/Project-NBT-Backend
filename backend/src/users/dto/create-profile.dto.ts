@@ -6,10 +6,14 @@ import {
   ArrayUnique,
   IsArray,
   IsNotEmpty,
+  IsNumber,
   IsOptional,
   IsString,
+  IsUrl,
   Matches,
+  Max,
   MaxLength,
+  Min,
   MinLength,
 } from 'class-validator';
 
@@ -37,8 +41,9 @@ export class CreateProfileDto {
   @IsString()
   @MinLength(2)
   @MaxLength(50)
-  @Matches(/\S/, {
-    message: 'Display name cannot be empty.',
+  @Matches(/^[A-Za-z]+(?: [A-Za-z]+)+$/, {
+    message:
+      'Display name must contain at least a first name and last name.',
   })
   displayName!: string;
 
@@ -88,12 +93,9 @@ export class CreateProfileDto {
     description: 'Date of birth in DD/MM/YYYY format.',
   })
   @IsString()
-  @Matches(
-    /^(0[1-9]|[12][0-9]|3[01])\/(0[1-9]|1[0-2])\/\d{4}$/,
-    {
-      message: 'Date of birth must use DD/MM/YYYY format.',
-    },
-  )
+  @Matches(/^(0[1-9]|[12]\d|3[01])\/(0[1-9]|1[0-2])\/\d{4}$/, {
+    message: 'Date of birth must use DD/MM/YYYY format.',
+  })
   dateOfBirth!: string;
 
   @ApiProperty({
@@ -104,8 +106,7 @@ export class CreateProfileDto {
   @MinLength(1)
   @MaxLength(50)
   @Matches(/^[A-Za-z]+(?:[ -][A-Za-z]+)*$/, {
-    message:
-      'City must contain only letters, spaces, or hyphens.',
+    message: 'City must contain only letters, spaces, or hyphens.',
   })
   city!: string;
 
@@ -114,6 +115,37 @@ export class CreateProfileDto {
     required: false,
   })
   @IsOptional()
-  @IsString()
+  @IsUrl()
   avatarUrl?: string;
+
+  @ApiProperty({
+    example: 'https://example.com/cover.jpg',
+    description: 'URL of the profile cover image.',
+    required: false,
+  })
+  @IsOptional()
+  @IsUrl()
+  coverImageUrl?: string;
+
+  @ApiProperty({
+    example: 19.9975,
+    description: 'Latitude between -90 and 90.',
+    required: false,
+  })
+  @IsOptional()
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(-90)
+  @Max(90)
+  latitude?: number;
+
+  @ApiProperty({
+    example: 73.7898,
+    description: 'Longitude between -180 and 180.',
+    required: false,
+  })
+  @IsOptional()
+  @IsNumber({ allowNaN: false, allowInfinity: false })
+  @Min(-180)
+  @Max(180)
+  longitude?: number;
 }
